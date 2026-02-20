@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { CATEGORIES, HINTS, DIFFICULTY } from "@/lib/words";
 import { submitGameResult } from "@/lib/actions";
 
@@ -63,23 +63,23 @@ export default function GameEngine({ profile }: { profile: any }) {
 
 export function GameSelector({ onSelect }: { onSelect: (d: keyof typeof DIFFICULTY) => void }) {
     return (
-        <div className="max-w-md mx-auto p-4">
-            <h2 className="text-3xl font-bold text-center mb-8 text-white">🐝 Spelling Bee</h2>
-            <div className="space-y-4">
+        <div className="max-w-md mx-auto p-4 flex flex-col h-full justify-center">
+            <h2 className="text-4xl font-bold text-center mb-12 text-white">🐝 Spelling Bee</h2>
+            <div className="space-y-6">
                 {(Object.entries(DIFFICULTY) as [keyof typeof DIFFICULTY, any][]).map(([key, d]) => (
                     <button
                         key={key}
                         onClick={() => onSelect(key)}
-                        className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl p-6 transition-all text-left flex items-center gap-4 group"
+                        className="w-full bg-white/5 hover:bg-white/10 border border-white/10 rounded-3xl p-6 transition-all text-left flex items-center gap-6 group active:scale-95"
                         style={{ borderColor: d.color + '40' }}
                     >
-                        <div className="text-2xl min-w-[60px] text-center">{"⭐".repeat(d.stars)}</div>
+                        <div className="text-4xl min-w-[60px] text-center">{"⭐".repeat(d.stars)}</div>
                         <div className="flex-1">
-                            <div className="text-xl font-bold" style={{ color: d.color }}>{d.label}</div>
-                            <div className="text-xs text-gray-400">{d.desc}</div>
+                            <div className="text-2xl font-bold mb-1" style={{ color: d.color }}>{d.label}</div>
+                            <div className="text-sm text-gray-400">{d.desc}</div>
                         </div>
-                        <div className="text-xl font-bold opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: d.color }}>
-                            PLAY
+                        <div className="text-3xl font-bold opacity-50 group-hover:opacity-100 transition-opacity" style={{ color: d.color }}>
+                            ▶
                         </div>
                     </button>
                 ))}
@@ -91,7 +91,6 @@ export function GameSelector({ onSelect }: { onSelect: (d: keyof typeof DIFFICUL
 function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameState: any }) {
     const [input, setInput] = useState("");
     const [feedback, setFeedback] = useState<"ok" | "no" | null>(null);
-    const inputRef = useRef<HTMLInputElement>(null);
 
     const currentWord = gameState.words[gameState.index];
     const diff = DIFFICULTY[gameState.diff];
@@ -99,14 +98,13 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
     const cat = CATEGORIES[currentWord.c];
 
     useEffect(() => {
-        inputRef.current?.focus();
         setInput("");
     }, [gameState.index]);
 
     useEffect(() => {
         if (!diff.timeLimit || gameState.timeLeft === null) return;
         if (gameState.timeLeft <= 0) {
-            submitAnswer(""); // Time's up
+            submitAnswer("");
             return;
         }
         const t = setInterval(() => {
@@ -115,16 +113,26 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
         return () => clearInterval(t);
     }, [gameState.timeLeft]);
 
+    const handleKey = (key: string) => {
+        if (feedback) return; // Block input during feedback
+        if (key === "BACK") {
+            setInput(prev => prev.slice(0, -1));
+        } else if (key === "ENTER") {
+            submitAnswer();
+        } else {
+            if (input.length < currentWord.w.length) {
+                setInput(prev => prev + key);
+            }
+        }
+    };
+
     const submitAnswer = (overrideInput?: string) => {
         const val = overrideInput !== undefined ? overrideInput : input;
         const isCorrect = val.trim().toLowerCase() === currentWord.w.toLowerCase();
 
-        if (isCorrect) {
-            setFeedback("ok");
-        } else {
-            setFeedback("no");
-        }
-        // No auto-advance
+        if (isCorrect) setFeedback("ok");
+        else setFeedback("no");
+        // Wait for user to click next
     };
 
     const nextWord = () => {
@@ -140,104 +148,105 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
         const newStreak = isCorrect ? gameState.streak + 1 : 0;
         const newScore = gameState.score + points;
 
-        const newAnswer = {
-            w: currentWord.w,
-            ok: isCorrect,
-            input: val,
-            pts: points
-        };
-
+        const newAnswer = { w: currentWord.w, ok: isCorrect, input: val, pts: points };
         const nextIndex = gameState.index + 1;
 
         if (nextIndex >= gameState.words.length) {
-            setGameState({
-                ...gameState,
-                index: nextIndex,
-                answers: [...gameState.answers, newAnswer],
-                score: newScore,
-                streak: newStreak,
-                status: "results"
-            });
+            setGameState({ ...gameState, index: nextIndex, answers: [...gameState.answers, newAnswer], score: newScore, streak: newStreak, status: "results" });
         } else {
-            setGameState({
-                ...gameState,
-                index: nextIndex,
-                answers: [...gameState.answers, newAnswer],
-                score: newScore,
-                streak: newStreak,
-                timeLeft: diff.timeLimit || null
-            });
+            setGameState({ ...gameState, index: nextIndex, answers: [...gameState.answers, newAnswer], score: newScore, streak: newStreak, timeLeft: diff.timeLimit || null });
         }
     };
 
+    const letters = "QWERTYUIOPASDFGHJKLZXCVBNM".split("");
+
     return (
-        <div className="max-w-md mx-auto p-4 text-center h-full flex flex-col justify-center">
-            <div className="flex justify-between items-center mb-8 text-sm font-bold text-gray-500 shrink-0">
-                <span>{gameState.index + 1} / {gameState.words.length}</span>
-                <span className={`${(gameState.timeLeft || 10) < 5 ? 'text-red-500 animate-pulse' : ''}`}>
+        <div className="flex flex-col h-full max-w-lg mx-auto pb-4">
+            {/* Header Stats */}
+            <div className="flex justify-between items-center py-4 px-2 text-sm font-bold text-gray-400 shrink-0">
+                <div className="bg-white/10 px-3 py-1 rounded-full">{gameState.index + 1} / {gameState.words.length}</div>
+                <div className={`bg-white/10 px-3 py-1 rounded-full ${(gameState.timeLeft || 10) < 5 ? 'text-red-400 animate-pulse' : ''}`}>
                     {gameState.timeLeft !== null ? `⏱ ${gameState.timeLeft}s` : '∞'}
-                </span>
+                </div>
+                <div className="bg-yellow-500/20 text-yellow-300 px-3 py-1 rounded-full">Score: {gameState.score}</div>
             </div>
 
-            <div className={`transition-all duration-300 transform flex-1 flex flex-col justify-center ${feedback === 'no' ? 'animate-shake' : ''}`}>
-                <div className="text-6xl mb-4">{diff.showHint ? hint : "❓"}</div>
-                <div className="text-xl font-bold mb-2" style={{ color: cat.color }}>{cat.emoji} {currentWord.c}</div>
+            {/* Game Area */}
+            <div className="flex-1 flex flex-col items-center justify-center min-h-0 relative">
 
-                {diff.showFirst && (
-                    <div className="text-4xl font-mono text-yellow-400 tracking-[0.5em] mb-8">
-                        {currentWord.w[0].toUpperCase()}{"_".repeat(currentWord.w.length - 1)}
+                {/* Hint Section */}
+                <div className={`transition-all duration-300 transform flex flex-col items-center mb-4 ${feedback === 'no' ? 'animate-shake' : ''}`}>
+                    <div className="text-7xl mb-2 drop-shadow-xl">{diff.showHint ? hint : "❓"}</div>
+                    <div className="text-lg font-bold uppercase tracking-widest mb-6" style={{ color: cat.color }}>{cat.emoji} {currentWord.c}</div>
+
+                    {/* Word Placeholder */}
+                    <div className="flex gap-2 justify-center mb-2">
+                        {Array.from({ length: currentWord.w.length }).map((_, i) => (
+                            <div key={i} className={`w-10 h-12 sm:w-12 sm:h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold uppercase transition-all shadow-lg
+                       ${input[i]
+                                    ? 'border-white bg-white/20 text-white translate-y-[-4px]'
+                                    : 'border-white/10 bg-black/20 text-gray-600'}`}>
+                                {input[i] || ""}
+                            </div>
+                        ))}
+                    </div>
+
+                    {diff.showFirst && (
+                        <div className="text-xs text-yellow-500/50 font-mono mt-2 tracking-[1em] h-4">
+                            {currentWord.w[0].toUpperCase()}{"_".repeat(currentWord.w.length - 1)}
+                        </div>
+                    )}
+                </div>
+
+                {/* Feedback Overlay (Absolute over Game Area) */}
+                {feedback && (
+                    <div className="absolute inset-x-0 top-0 bottom-0 z-20 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md rounded-3xl animate-in fade-in zoom-in duration-200">
+                        <div className="text-8xl mb-4 animate-bounce filter drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]">
+                            {feedback === "ok" ? "✅" : "❌"}
+                        </div>
+                        <h3 className="text-3xl font-bold text-white mb-2">
+                            {feedback === "ok" ? "¡Correcto!" : "¡Incorrecto!"}
+                        </h3>
+                        {feedback === "no" && (
+                            <p className="text-xl text-gray-300 mb-8">
+                                Era: <span className="font-bold text-yellow-400 text-2xl mx-2">{currentWord.w.toUpperCase()}</span>
+                            </p>
+                        )}
+                        <button onClick={nextWord} className="bg-white text-black font-bold text-xl px-12 py-4 rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-xl">
+                            Siguiente ➡
+                        </button>
                     </div>
                 )}
 
-                <div className="flex gap-2 justify-center mb-8">
-                    {Array.from({ length: currentWord.w.length }).map((_, i) => (
-                        <div key={i} className={`w-10 h-12 rounded-lg border-2 flex items-center justify-center text-xl font-bold uppercase
-                    ${input[i] ? 'border-white bg-white/10' : 'border-white/10'}`}>
-                            {input[i] || ""}
-                        </div>
-                    ))}
-                </div>
-
-                <input
-                    ref={inputRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && submitAnswer()}
-                    className="w-full bg-transparent border-b-2 border-white/20 text-center text-2xl py-2 outline-none focus:border-yellow-400 text-transparent caret-white absolute opacity-0 pointer-events-none"
-                    autoFocus
-                />
-
-                {/* Mobile Input trigger */}
-                <button onClick={() => inputRef.current?.focus()} className="bg-white/10 px-6 py-3 rounded-xl font-bold mb-4 shrink-0">
-                    ⌨ Escribir
-                </button>
             </div>
 
-            {feedback && (
-                <div className={`fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 backdrop-blur-md transition-opacity p-6`}>
-                    <div className="text-8xl mb-6 animate-bounce">
-                        {feedback === "ok" ? "✅" : "❌"}
-                    </div>
-                    <h3 className="text-3xl font-bold text-white mb-2">
-                        {feedback === "ok" ? "¡Correcto!" : "¡Ups!"}
-                    </h3>
-                    {feedback === "no" && (
-                        <p className="text-xl text-gray-300 mb-8">
-                            Era: <span className="font-bold text-yellow-400">{currentWord.w.toUpperCase()}</span>
-                        </p>
-                    )}
-
-                    <button
-                        onClick={nextWord}
-                        autoFocus
-                        className="bg-white text-black font-bold text-xl px-12 py-4 rounded-2xl hover:scale-105 transition-transform shadow-2xl shadow-white/20"
-                    >
-                        Siguiente →
-                    </button>
+            {/* On-Screen Keyboard */}
+            <div className="shrink-0 pt-2 pb-6 px-1">
+                <div className="grid grid-cols-10 gap-1 sm:gap-1.5 mb-2">
+                    {letters.slice(0, 10).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
                 </div>
-            )}
+                <div className="grid grid-cols-10 gap-1 sm:gap-1.5 mb-2 px-4">
+                    {letters.slice(10, 19).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
+                </div>
+                <div className="grid grid-cols-10 gap-1 sm:gap-1.5 px-8">
+                    <button onClick={() => handleKey("BACK")} className="col-span-2 bg-red-500/20 active:bg-red-500/40 text-red-200 rounded-lg font-bold flex items-center justify-center text-lg shadow-md border-b-2 border-red-900/50 transform active:translate-y-[2px] transition-all">⌫</button>
+                    {letters.slice(19, 26).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
+                    <button onClick={() => handleKey("ENTER")} className="col-span-2 bg-green-500 active:bg-green-600 text-white rounded-lg font-bold flex items-center justify-center text-lg shadow-md border-b-2 border-green-800 transform active:translate-y-[2px] transition-all">✓</button>
+                </div>
+            </div>
         </div>
     );
+}
+
+function Key({ char, onClick }: { char: string, onClick: () => void }) {
+    return (
+        <button
+            onClick={onClick}
+            className="aspect-[4/5] bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-lg text-lg sm:text-xl font-bold text-white shadow-md border-b-2 border-white/5 transform active:translate-y-[2px] active:border-b-0 transition-all select-none"
+        >
+            {char}
+        </button>
+    )
 }
 
 function GameResults({ gameState, onRestart, profile }: { gameState: GameState, onRestart: any, profile: any }) {
@@ -253,32 +262,34 @@ function GameResults({ gameState, onRestart, profile }: { gameState: GameState, 
     }, []);
 
     return (
-        <div className="max-w-md mx-auto p-4 text-center">
-            <div className="text-6xl mb-4">
+        <div className="max-w-md mx-auto p-4 text-center h-full flex flex-col justify-center">
+            <div className="text-8xl mb-6 animate-bounce">
                 {accuracy >= 80 ? "🏆" : accuracy >= 50 ? "⭐" : "💪"}
             </div>
-            <h2 className="text-3xl font-bold mb-2">
+            <h2 className="text-4xl font-bold mb-2 text-white">
                 {accuracy >= 80 ? "¡Increíble!" : "¡Buen intento!"}
             </h2>
-            <p className="text-gray-400 mb-8">{diff.label} • {gameState.score} Puntos</p>
+            <p className="text-gray-400 mb-12 text-lg">{diff.label} • <span className="text-yellow-400 font-bold">{gameState.score} Puntos</span></p>
 
-            <div className="grid grid-cols-2 gap-4 mb-8">
-                <div className="bg-white/5 rounded-2xl p-4">
-                    <div className="text-2xl font-bold text-teal-400">{accuracy}%</div>
-                    <div className="text-xs text-gray-500">Precisión</div>
+            <div className="grid grid-cols-2 gap-4 mb-12">
+                <div className="bg-white/5 rounded-3xl p-6 border border-white/5">
+                    <div className="text-4xl font-bold text-teal-400 mb-1">{accuracy}%</div>
+                    <div className="text-sm text-gray-500 uppercase tracking-widest">Precisión</div>
                 </div>
-                <div className="bg-white/5 rounded-2xl p-4">
-                    <div className="text-2xl font-bold text-yellow-400">+{gameState.score}</div>
-                    <div className="text-xs text-gray-500">Monedas</div>
+                <div className="bg-white/5 rounded-3xl p-6 border border-white/5">
+                    <div className="text-4xl font-bold text-yellow-400 mb-1">+{gameState.score}</div>
+                    <div className="text-sm text-gray-500 uppercase tracking-widest">Monedas</div>
                 </div>
             </div>
 
-            <button onClick={onRestart} className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 rounded-xl mb-4">
-                🔄 Jugar otra vez
-            </button>
-            <a href="/" className="block text-gray-400 text-sm hover:text-white">
-                Volver al inicio
-            </a>
+            <div className="flex gap-4">
+                <button onClick={onRestart} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-900/20 active:scale-95 transition-transform">
+                    🔄 Jugar otra vez
+                </button>
+                <a href="/" className="flex-1 flex items-center justify-center bg-white/10 hover:bg-white/20 text-white font-bold py-4 rounded-2xl active:scale-95 transition-transform">
+                    🏠 Salir
+                </a>
+            </div>
         </div>
     )
 }
