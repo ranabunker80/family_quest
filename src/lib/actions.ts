@@ -106,3 +106,26 @@ export async function rejectTransaction(id: string) {
     await supabase.from("ledger").update({ status: "rejected" }).eq("id", id);
     revalidatePath("/");
 }
+
+export async function submitGameResult(score: number, difficulty: string, accuracy: number) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // 1. Log the game in ledger (Approved immediately)
+    await supabase.from("ledger").insert({
+        kid_id: user.id,
+        amount: score,
+        description: `Juego: Spelling Bee (${difficulty}) - ${accuracy}%`,
+        type: "bonus",
+        status: "approved",
+    });
+
+    // 2. Update profile coins
+    const { data: profile } = await supabase.from("profiles").select("coins").eq("id", user.id).single();
+    if (profile) {
+        await supabase.from("profiles").update({ coins: profile.coins + score }).eq("id", user.id);
+    }
+
+    revalidatePath("/");
+}
