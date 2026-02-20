@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { MissionCard } from "@/components/economy/MissionCard";
 import { RewardCard } from "@/components/economy/RewardCard";
+import Link from "next/link";
 
 export default function KidDashboard({ profile, missions, rewards, history }: { profile: any, missions: any[], rewards: any[], history: any[] }) {
     const [activeTab, setActiveTab] = useState("missions");
@@ -10,8 +11,9 @@ export default function KidDashboard({ profile, missions, rewards, history }: { 
     return (
         <div>
             {/* Tabs */}
-            <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
+            <div className="flex gap-2 mb-8 overflow-x-auto pb-2 no-scrollbar">
                 <Tab label="📋 Misiones" id="missions" active={activeTab} set={setActiveTab} />
+                <Tab label="🎮 Juegos" id="games" active={activeTab} set={setActiveTab} />
                 <Tab label="🎁 Tienda" id="shop" active={activeTab} set={setActiveTab} />
                 <Tab label="📜 Historial" id="history" active={activeTab} set={setActiveTab} />
             </div>
@@ -19,18 +21,63 @@ export default function KidDashboard({ profile, missions, rewards, history }: { 
             {/* Content */}
             <div className="min-h-[400px]">
                 {activeTab === "missions" && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {missions.map((m) => (
-                            <MissionCard key={m.id} mission={m} />
-                        ))}
+                    <div className="space-y-6">
+                        <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-6 mb-6">
+                            <h3 className="text-xl font-bold text-blue-300 mb-2">Misiones Diarias</h3>
+                            <p className="text-gray-400 text-sm">Completa estas tareas para ganar monedas y comprar premios.</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {missions.map((m) => (
+                                <MissionCard key={m.id} mission={m} />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === "games" && (
+                    <div className="space-y-6">
+                        <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-6 mb-6">
+                            <h3 className="text-xl font-bold text-purple-300 mb-2">Sala de Juegos</h3>
+                            <p className="text-gray-400 text-sm">Diviértete y aprende para ganar puntos extra automáticamente.</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                            {/* Spelling Bee Card */}
+                            <Link href="/game" className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-yellow-400/50 hover:bg-white/10 transition-all cursor-pointer group relative overflow-hidden">
+                                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-9xl">🐝</div>
+                                <div className="relative z-10">
+                                    <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🐝</div>
+                                    <h3 className="text-2xl font-bold text-white mb-2">Spelling Bee</h3>
+                                    <p className="text-gray-400 text-sm mb-4">Deletrea palabras en inglés y gana monedas por cada acierto.</p>
+                                    <span className="inline-block bg-yellow-500/20 text-yellow-300 text-xs font-bold px-3 py-1 rounded-full">
+                                        +5 a +45 Pts
+                                    </span>
+                                </div>
+                            </Link>
+
+                            {/* Coming Soon */}
+                            <div className="bg-white/5 border border-white/5 rounded-3xl p-6 opacity-50 grayscale flex items-center justify-center">
+                                <div className="text-center">
+                                    <div className="text-4xl mb-2">🔒</div>
+                                    <p className="font-bold">Próximamente</p>
+                                </div>
+                            </div>
+
+                        </div>
                     </div>
                 )}
 
                 {activeTab === "shop" && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {rewards.map((r) => (
-                            <RewardCard key={r.id} reward={r} userCoins={profile.coins} />
-                        ))}
+                    <div className="space-y-6">
+                        <div className="bg-teal-500/10 border border-teal-500/20 rounded-2xl p-6 mb-6">
+                            <h3 className="text-xl font-bold text-teal-300 mb-2">Tienda de Premios</h3>
+                            <p className="text-gray-400 text-sm">Usa tus monedas para canjear recompensas increíbles.</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {rewards.map((r) => (
+                                <RewardCard key={r.id} reward={r} userCoins={profile.coins} />
+                            ))}
+                        </div>
                     </div>
                 )}
 
@@ -65,10 +112,10 @@ function Tab({ label, id, active, set }: any) {
     return (
         <button
             onClick={() => set(id)}
-            className={`px-6 py-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap
+            className={`px-6 py-3 rounded-2xl font-bold text-sm transition-all whitespace-nowrap
         ${isActive
-                    ? 'bg-white/10 text-white border border-white/20'
-                    : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'}`}
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-900/40 transform scale-105'
+                    : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'}`}
         >
             {label}
         </button>
