@@ -124,59 +124,62 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
         } else {
             setFeedback("no");
         }
+        // No auto-advance
+    };
 
-        setTimeout(() => {
-            setFeedback(null);
+    const nextWord = () => {
+        setFeedback(null);
+        const val = input;
+        const isCorrect = val.trim().toLowerCase() === currentWord.w.toLowerCase();
 
-            // Calculate Score
-            const base = isCorrect ? (currentWord.w.length <= 3 ? 5 : currentWord.w.length <= 5 ? 10 : 15) : 0;
-            const streakBonus = isCorrect && gameState.streak >= 2 ? 5 : 0;
-            const points = (base + streakBonus) * diff.multiplier;
+        // Calculate Score
+        const base = isCorrect ? (currentWord.w.length <= 3 ? 5 : currentWord.w.length <= 5 ? 10 : 15) : 0;
+        const streakBonus = isCorrect && gameState.streak >= 2 ? 5 : 0;
+        const points = (base + streakBonus) * diff.multiplier;
 
-            const newStreak = isCorrect ? gameState.streak + 1 : 0;
-            const newScore = gameState.score + points;
+        const newStreak = isCorrect ? gameState.streak + 1 : 0;
+        const newScore = gameState.score + points;
 
-            const newAnswer = {
-                w: currentWord.w,
-                ok: isCorrect,
-                input: val,
-                pts: points
-            };
+        const newAnswer = {
+            w: currentWord.w,
+            ok: isCorrect,
+            input: val,
+            pts: points
+        };
 
-            const nextIndex = gameState.index + 1;
+        const nextIndex = gameState.index + 1;
 
-            if (nextIndex >= gameState.words.length) {
-                setGameState({
-                    ...gameState,
-                    index: nextIndex,
-                    answers: [...gameState.answers, newAnswer],
-                    score: newScore,
-                    streak: newStreak,
-                    status: "results"
-                });
-            } else {
-                setGameState({
-                    ...gameState,
-                    index: nextIndex,
-                    answers: [...gameState.answers, newAnswer],
-                    score: newScore,
-                    streak: newStreak,
-                    timeLeft: diff.timeLimit || null
-                });
-            }
-        }, 1000);
+        if (nextIndex >= gameState.words.length) {
+            setGameState({
+                ...gameState,
+                index: nextIndex,
+                answers: [...gameState.answers, newAnswer],
+                score: newScore,
+                streak: newStreak,
+                status: "results"
+            });
+        } else {
+            setGameState({
+                ...gameState,
+                index: nextIndex,
+                answers: [...gameState.answers, newAnswer],
+                score: newScore,
+                streak: newStreak,
+                timeLeft: diff.timeLimit || null
+            });
+        }
     };
 
     return (
-        <div className="max-w-md mx-auto p-4 text-center">
-            <div className="flex justify-between items-center mb-8 text-sm font-bold text-gray-500">
+        <div className="max-w-md mx-auto p-4 text-center h-full flex flex-col justify-center">
+            <div className="flex justify-between items-center mb-8 text-sm font-bold text-gray-500 shrink-0">
                 <span>{gameState.index + 1} / {gameState.words.length}</span>
                 <span className={`${(gameState.timeLeft || 10) < 5 ? 'text-red-500 animate-pulse' : ''}`}>
                     {gameState.timeLeft !== null ? `⏱ ${gameState.timeLeft}s` : '∞'}
                 </span>
             </div>
 
-            <div className={`transition-all duration-300 transform ${feedback === 'no' ? 'animate-shake' : ''}`}>
+            <div className={`transition-all duration-300 transform flex-1 flex flex-col justify-center ${feedback === 'no' ? 'animate-shake' : ''}`}>
                 <div className="text-6xl mb-4">{diff.showHint ? hint : "❓"}</div>
                 <div className="text-xl font-bold mb-2" style={{ color: cat.color }}>{cat.emoji} {currentWord.c}</div>
 
@@ -205,16 +208,32 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
                 />
 
                 {/* Mobile Input trigger */}
-                <button onClick={() => inputRef.current?.focus()} className="bg-white/10 px-6 py-3 rounded-xl font-bold mb-4">
+                <button onClick={() => inputRef.current?.focus()} className="bg-white/10 px-6 py-3 rounded-xl font-bold mb-4 shrink-0">
                     ⌨ Escribir
                 </button>
             </div>
 
             {feedback && (
-                <div className={`fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity`}>
-                    <div className="text-6xl animate-bounce">
+                <div className={`fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 backdrop-blur-md transition-opacity p-6`}>
+                    <div className="text-8xl mb-6 animate-bounce">
                         {feedback === "ok" ? "✅" : "❌"}
                     </div>
+                    <h3 className="text-3xl font-bold text-white mb-2">
+                        {feedback === "ok" ? "¡Correcto!" : "¡Ups!"}
+                    </h3>
+                    {feedback === "no" && (
+                        <p className="text-xl text-gray-300 mb-8">
+                            Era: <span className="font-bold text-yellow-400">{currentWord.w.toUpperCase()}</span>
+                        </p>
+                    )}
+
+                    <button
+                        onClick={nextWord}
+                        autoFocus
+                        className="bg-white text-black font-bold text-xl px-12 py-4 rounded-2xl hover:scale-105 transition-transform shadow-2xl shadow-white/20"
+                    >
+                        Siguiente →
+                    </button>
                 </div>
             )}
         </div>
@@ -227,7 +246,6 @@ function GameResults({ gameState, onRestart, profile }: { gameState: GameState, 
     const total = gameState.words.length;
     const accuracy = Math.round((correct / total) * 100);
 
-    // Submit score only once on mount
     useEffect(() => {
         if (gameState.score > 0) {
             submitGameResult(gameState.score, gameState.diff, accuracy);

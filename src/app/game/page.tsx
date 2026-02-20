@@ -13,7 +13,7 @@ export default async function GamePage() {
         return redirect("/login");
     }
 
-    // Fetch Profile to pass to game logic if needed (e.g. for creating custom word lists later)
+    // Fetch Profile to pass to game logic
     const { data: profile } = await supabase
         .from("profiles")
         .select("*")
@@ -34,9 +34,9 @@ export default async function GamePage() {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-4 font-[family-name:var(--font-geist-sans)]">
-            <div className="max-w-4xl mx-auto">
-                <header className="flex justify-between items-center mb-6">
+        <div className="min-h-[100dvh] bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 font-[family-name:var(--font-geist-sans)] overflow-hidden flex flex-col">
+            <div className="max-w-md mx-auto w-full p-4 flex-1 flex flex-col h-full">
+                <header className="flex justify-between items-center mb-6 shrink-0">
                     <a href="/" className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl text-sm font-bold transition-colors">
                         ← Salir
                     </a>
@@ -46,7 +46,9 @@ export default async function GamePage() {
                     </div>
                 </header>
 
-                <GameEngine profile={profile} />
+                <div className="flex-1 min-h-0">
+                    <GameEngine profile={profile} />
+                </div>
             </div>
         </div>
     );
