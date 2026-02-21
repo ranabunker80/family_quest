@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CATEGORIES, HINTS, DIFFICULTY } from "@/lib/words";
+import { CATEGORIES, HINTS, DIFFICULTY, type Hint } from "@/lib/words";
+import { playWordAudio, playSfx, preloadWordAudio } from "@/lib/audio";
 import { submitGameResult } from "@/lib/actions";
 
 type GameState = {
@@ -91,14 +92,24 @@ export function GameSelector({ onSelect }: { onSelect: (d: keyof typeof DIFFICUL
 function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameState: any }) {
     const [input, setInput] = useState("");
     const [feedback, setFeedback] = useState<"ok" | "no" | null>(null);
+    const [imgError, setImgError] = useState(false);
 
     const currentWord = gameState.words[gameState.index];
     const diff = DIFFICULTY[gameState.diff];
-    const hint = HINTS[currentWord.w] || "❓";
+    const hint: Hint = HINTS[currentWord.w] || { emoji: "❓", image: "" };
     const cat = CATEGORIES[currentWord.c];
 
+    // Reset input and image state, auto-play pronunciation on new word
     useEffect(() => {
         setInput("");
+        setImgError(false);
+        playWordAudio(currentWord.w);
+
+        // Preload next word's audio
+        const nextIndex = gameState.index + 1;
+        if (nextIndex < gameState.words.length) {
+            preloadWordAudio(gameState.words[nextIndex].w);
+        }
     }, [gameState.index]);
 
     useEffect(() => {
@@ -130,9 +141,13 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
         const val = overrideInput !== undefined ? overrideInput : input;
         const isCorrect = val.trim().toLowerCase() === currentWord.w.toLowerCase();
 
-        if (isCorrect) setFeedback("ok");
-        else setFeedback("no");
-        // Wait for user to click next
+        if (isCorrect) {
+            setFeedback("ok");
+            playSfx("success");
+        } else {
+            setFeedback("no");
+            playSfx("error");
+        }
     };
 
     const nextWord = () => {
@@ -176,7 +191,32 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
 
                 {/* Hint Section */}
                 <div className={`transition-all duration-300 transform flex flex-col items-center mb-4 ${feedback === 'no' ? 'animate-shake' : ''}`}>
-                    <div className="text-7xl mb-2 drop-shadow-xl">{diff.showHint ? hint : "❓"}</div>
+                    {/* Hint: image with emoji fallback, or "?" in Hard mode */}
+                    {diff.showHint ? (
+                        !imgError && hint.image ? (
+                            <img
+                                src={hint.image}
+                                alt=""
+                                className="w-28 h-28 sm:w-32 sm:h-32 object-contain mb-2 drop-shadow-xl"
+                                onError={() => setImgError(true)}
+                                draggable={false}
+                            />
+                        ) : (
+                            <div className="text-7xl mb-2 drop-shadow-xl">{hint.emoji}</div>
+                        )
+                    ) : (
+                        <div className="text-7xl mb-2 drop-shadow-xl">❓</div>
+                    )}
+
+                    {/* Listen button */}
+                    <button
+                        onClick={() => playWordAudio(currentWord.w)}
+                        className="text-3xl mb-2 opacity-70 hover:opacity-100 active:scale-90 transition-all"
+                        aria-label="Escuchar pronunciación"
+                    >
+                        🔊
+                    </button>
+
                     <div className="text-lg font-bold uppercase tracking-widest mb-6" style={{ color: cat.color }}>{cat.emoji} {currentWord.c}</div>
 
                     {/* Word Placeholder */}
@@ -208,9 +248,18 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
                             {feedback === "ok" ? "¡Correcto!" : "¡Incorrecto!"}
                         </h3>
                         {feedback === "no" && (
-                            <p className="text-xl text-gray-300 mb-8">
-                                Era: <span className="font-bold text-yellow-400 text-2xl mx-2">{currentWord.w.toUpperCase()}</span>
-                            </p>
+                            <div className="flex items-center gap-3 mb-8">
+                                <p className="text-xl text-gray-300">
+                                    Era: <span className="font-bold text-yellow-400 text-2xl mx-2">{currentWord.w.toUpperCase()}</span>
+                                </p>
+                                <button
+                                    onClick={() => playWordAudio(currentWord.w)}
+                                    className="text-2xl opacity-70 hover:opacity-100 active:scale-90 transition-all"
+                                    aria-label="Escuchar pronunciación correcta"
+                                >
+                                    🔊
+                                </button>
+                            </div>
                         )}
                         <button onClick={nextWord} className="bg-white text-black font-bold text-xl px-12 py-4 rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-xl">
                             Siguiente ➡
