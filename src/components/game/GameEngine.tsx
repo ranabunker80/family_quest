@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { CATEGORIES, HINTS, DIFFICULTY, type Hint } from "@/lib/words";
-import { playWordAudio, playSfx, preloadWordAudio } from "@/lib/audio";
+import { unlockAudio, playWordAudio, playSfx, preloadWordAudio } from "@/lib/audio";
 import { submitGameResult } from "@/lib/actions";
 
 type GameState = {
@@ -50,7 +50,7 @@ export default function GameEngine({ profile }: { profile: any }) {
     };
 
     if (!selectedDiff) {
-        return <GameSelector onSelect={(d) => { setSelectedDiff(d); startGame(d); }} />;
+        return <GameSelector onSelect={(d) => { unlockAudio(); setSelectedDiff(d); startGame(d); }} />;
     }
 
     if (gameState?.status === "results") {
