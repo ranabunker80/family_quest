@@ -10,6 +10,7 @@
 
 let audioUnlocked = false;
 let sharedAudio: HTMLAudioElement | null = null;
+let audioReady: Promise<void> = Promise.resolve();
 
 /**
  * Must be called from a direct user interaction (click/tap handler).
@@ -23,11 +24,18 @@ export function unlockAudio(): void {
     sharedAudio = new Audio();
     sharedAudio.volume = 1;
 
-    // Play a tiny silent data-URI WAV to "unlock" the element
+    // Play a tiny silent data-URI WAV to "unlock" the element.
+    // We track completion via audioReady so playWordAudio waits
+    // for the unlock to finish before changing src.
     sharedAudio.src =
       "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAABCxAgAEABAAZGF0YQAAAAA=";
-    const p = sharedAudio.play();
-    if (p) p.catch(() => {});
+
+    audioReady = new Promise<void>((resolve) => {
+      const done = () => { audioUnlocked = true; resolve(); };
+      const p = sharedAudio!.play();
+      if (p) p.then(done).catch(done);
+      else done();
+    });
 
     // Also unlock an AudioContext (needed on some iOS versions)
     const AC = window.AudioContext || (window as any).webkitAudioContext;
@@ -40,22 +48,23 @@ export function unlockAudio(): void {
       src.start();
       if (ctx.state === "suspended") ctx.resume();
     }
-
-    audioUnlocked = true;
   } catch {
-    // Swallow — worst case audio stays locked and we fall back to Speech API
+    audioUnlocked = true;
+    audioReady = Promise.resolve();
   }
 }
 
 /**
  * Play the pronunciation of a word.
- * Tries pre-generated audio first, falls back to Web Speech API.
+ * Waits for unlock to complete, then tries WAV → MP3 → Web Speech API.
  */
 export function playWordAudio(word: string): void {
   const lower = word.toLowerCase();
-  tryPlayFile(`/audio/words/${lower}.wav`, () => {
-    tryPlayFile(`/audio/words/${lower}.mp3`, () => {
-      fallbackSpeak(lower);
+  audioReady.then(() => {
+    tryPlayFile(`/audio/words/${lower}.wav`, () => {
+      tryPlayFile(`/audio/words/${lower}.mp3`, () => {
+        fallbackSpeak(lower);
+      });
     });
   });
 }
@@ -64,9 +73,11 @@ export function playWordAudio(word: string): void {
  * Play a sound effect (success or error).
  */
 export function playSfx(type: "success" | "error"): void {
-  tryPlayFile(`/audio/sfx/${type}.wav`, () => {
-    tryPlayFile(`/audio/sfx/${type}.mp3`, () => {
-      // SFX are non-critical, silently fail
+  audioReady.then(() => {
+    tryPlayFile(`/audio/sfx/${type}.wav`, () => {
+      tryPlayFile(`/audio/sfx/${type}.mp3`, () => {
+        // SFX are non-critical, silently fail
+      });
     });
   });
 }
@@ -86,24 +97,28 @@ export function preloadWordAudio(word: string): void {
 
 function tryPlayFile(src: string, onError: () => void): void {
   if (!sharedAudio) {
-    // Audio never unlocked — go straight to fallback
     onError();
     return;
   }
+
+  // Guard against double-invocation: both the "error" event and
+  // play().catch() can fire when a file doesn't exist.
+  let handled = false;
+  const handleOnce = () => {
+    if (handled) return;
+    handled = true;
+    sharedAudio?.removeEventListener("error", handleOnce);
+    onError();
+  };
 
   sharedAudio.pause();
   sharedAudio.currentTime = 0;
   sharedAudio.src = src;
 
-  const handleError = () => {
-    sharedAudio?.removeEventListener("error", handleError);
-    onError();
-  };
-
-  sharedAudio.addEventListener("error", handleError, { once: true });
+  sharedAudio.addEventListener("error", handleOnce, { once: true });
 
   const p = sharedAudio.play();
-  if (p) p.catch(() => onError());
+  if (p) p.catch(handleOnce);
 }
 
 /**
