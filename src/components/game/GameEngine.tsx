@@ -270,7 +270,7 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
             </div>
 
             {/* On-Screen Keyboard */}
-            <div className="shrink-0 pt-2 pb-6 px-1">
+            <div data-game-keyboard autoCorrect="off" autoCapitalize="off" spellCheck={false} inputMode="none" className="shrink-0 pt-2 pb-6 px-1">
                 <div className="grid grid-cols-10 gap-1 sm:gap-1.5 mb-2">
                     {letters.slice(0, 10).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
                 </div>
@@ -278,9 +278,9 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
                     {letters.slice(10, 19).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
                 </div>
                 <div className="grid grid-cols-10 gap-1 sm:gap-1.5 px-8">
-                    <button onClick={() => handleKey("BACK")} className="col-span-2 bg-red-500/20 active:bg-red-500/40 text-red-200 rounded-lg font-bold flex items-center justify-center text-lg shadow-md border-b-2 border-red-900/50 transform active:translate-y-[2px] transition-all">⌫</button>
+                    <button type="button" onClick={() => handleKey("BACK")} className="col-span-2 bg-red-500/20 active:bg-red-500/40 text-red-200 rounded-lg font-bold flex items-center justify-center text-lg shadow-md border-b-2 border-red-900/50 transform active:translate-y-[2px] transition-all">⌫</button>
                     {letters.slice(19, 26).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
-                    <button onClick={() => handleKey("ENTER")} className="col-span-2 bg-green-500 active:bg-green-600 text-white rounded-lg font-bold flex items-center justify-center text-lg shadow-md border-b-2 border-green-800 transform active:translate-y-[2px] transition-all">✓</button>
+                    <button type="button" onClick={() => handleKey("ENTER")} className="col-span-2 bg-green-500 active:bg-green-600 text-white rounded-lg font-bold flex items-center justify-center text-lg shadow-md border-b-2 border-green-800 transform active:translate-y-[2px] transition-all">✓</button>
                 </div>
             </div>
         </div>
@@ -290,6 +290,7 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
 function Key({ char, onClick }: { char: string, onClick: () => void }) {
     return (
         <button
+            type="button"
             onClick={onClick}
             className="aspect-[4/5] bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-lg text-lg sm:text-xl font-bold text-white shadow-md border-b-2 border-white/5 transform active:translate-y-[2px] active:border-b-0 transition-all select-none"
         >
