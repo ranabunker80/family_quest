@@ -22,7 +22,11 @@ export default async function Home() {
     .eq("id", user.id)
     .single();
 
-  const isParent = profile?.role === "parent";
+  if (!profile) {
+    return redirect("/onboarding");
+  }
+
+  const isParent = profile.role === "parent";
 
   // Fetch Data based on Role
   let missions: any[] = [];
@@ -62,12 +66,7 @@ export default async function Home() {
           </div>
         </header>
 
-        {!profile ? (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-3xl p-8 text-center">
-            <h2 className="text-2xl font-bold text-red-400 mb-2">Perfil no encontrado</h2>
-            <p className="text-gray-400 mb-6">Tu usuario existe, pero no se ha vinculado a un perfil de familia.</p>
-          </div>
-        ) : isParent ? (
+        {isParent ? (
           <ParentDashboard profile={profile} pendingApprovals={pendingApprovals} />
         ) : (
           <KidDashboard
