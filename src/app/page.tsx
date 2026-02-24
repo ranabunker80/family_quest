@@ -1,8 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import KidDashboard from "@/components/dashboards/KidDashboard";
-import ParentDashboard from "@/components/dashboards/ParentDashboard";
-import { getMissions, getRewards, getKidHistory, getPendingApprovals } from "@/lib/actions";
+import { getMissions, getRewards, getKidHistory } from "@/lib/actions";
 
 export default async function Home() {
   const supabase = await createClient();
@@ -26,21 +25,15 @@ export default async function Home() {
     return redirect("/onboarding");
   }
 
-  const isParent = profile.role === "parent";
-
-  // Fetch Data based on Role
-  let missions: any[] = [];
-  let rewards: any[] = [];
-  let history: any[] = [];
-  let pendingApprovals: any[] = [];
-
-  if (isParent) {
-    pendingApprovals = await getPendingApprovals();
-  } else {
-    missions = await getMissions();
-    rewards = await getRewards();
-    history = await getKidHistory(user.id);
+  // Parents go directly to the new parent dashboard
+  if (profile.role === "parent") {
+    return redirect("/parent");
   }
+
+  // Kid data
+  const missions = await getMissions();
+  const rewards = await getRewards();
+  const history = await getKidHistory(user.id);
 
   return (
     <div className="min-h-screen p-6 font-[family-name:var(--font-geist-sans)]">
@@ -53,7 +46,7 @@ export default async function Home() {
                 {profile?.full_name || "Usuario"}
               </h1>
               <p className="text-gray-400 text-sm">
-                {isParent ? "Panel de Padres 👨‍👩‍👧‍👦" : `Nivel Explorador 🌟 • ${profile?.coins || 0} Monedas`}
+                Nivel Explorador 🌟 • {profile?.coins || 0} Monedas
               </p>
             </div>
           </div>
@@ -66,16 +59,12 @@ export default async function Home() {
           </div>
         </header>
 
-        {isParent ? (
-          <ParentDashboard profile={profile} pendingApprovals={pendingApprovals} />
-        ) : (
-          <KidDashboard
-            profile={profile}
-            missions={missions}
-            rewards={rewards}
-            history={history}
-          />
-        )}
+        <KidDashboard
+          profile={profile}
+          missions={missions}
+          rewards={rewards}
+          history={history}
+        />
 
       </main>
     </div>

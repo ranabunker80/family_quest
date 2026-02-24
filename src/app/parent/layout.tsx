@@ -25,29 +25,31 @@ export default function ParentLayout({
       <nav className="sticky top-0 z-40 bg-white/5 backdrop-blur-xl border-b border-white/10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
-            {/* Logo / Back */}
-            <Link
-              href="/"
-              className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
-            >
-              <span className="text-lg">←</span>
-              <span className="text-sm font-medium hidden sm:inline">
-                Volver
-              </span>
-            </Link>
+            {/* Logo */}
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🐝</span>
+              <span className="text-sm font-bold text-gray-400 hidden sm:inline">FamilyQuest</span>
+            </div>
 
             {/* Title */}
             <h1 className="text-lg font-bold bg-gradient-to-r from-yellow-400 to-teal-400 bg-clip-text text-transparent">
               Panel de Padres
             </h1>
 
-            {/* Mobile menu button */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="sm:hidden p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
-            >
-              <span className="text-lg">{mobileMenuOpen ? "✕" : "☰"}</span>
-            </button>
+            {/* Right side: signout + mobile menu */}
+            <div className="flex items-center gap-2">
+              <form action="/auth/signout" method="post">
+                <button className="bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-xl text-sm transition-colors flex items-center gap-1">
+                  <span>🚪</span> <span className="hidden sm:inline">Salir</span>
+                </button>
+              </form>
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="sm:hidden p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
+              >
+                <span className="text-lg">{mobileMenuOpen ? "✕" : "☰"}</span>
+              </button>
+            </div>
 
             {/* Desktop nav */}
             <div className="hidden sm:flex items-center gap-2">
