@@ -4,6 +4,26 @@ import { useState, useEffect } from "react";
 import { CATEGORIES, HINTS, DIFFICULTY, type Hint } from "@/lib/words";
 import { unlockAudio, playWordAudio, playSfx, preloadWordAudio } from "@/lib/audio";
 import { submitGameResult } from "@/lib/actions";
+import ProgressBar from "./ProgressBar";
+import Confetti from "./Confetti";
+
+// --- Feedback messages ---
+const CORRECT_MESSAGES = [
+    "¡Correcto!",
+    "¡Genial!",
+    "¡Increíble!",
+    "¡Eres un crack!",
+    "¡Excelente!",
+];
+
+const INCORRECT_MESSAGES = [
+    "¡Casi! Era",
+    "No te preocupes, era",
+];
+
+function randomFrom<T>(arr: T[]): T {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
 
 type GameState = {
     diff: keyof typeof DIFFICULTY;
@@ -89,9 +109,42 @@ export function GameSelector({ onSelect }: { onSelect: (d: keyof typeof DIFFICUL
     );
 }
 
+function TimerBar({ timeLeft, timeLimit }: { timeLeft: number; timeLimit: number }) {
+    const pct = (timeLeft / timeLimit) * 100;
+    const isUrgent = timeLeft <= 5;
+
+    let barColor: string;
+    if (timeLeft <= 5) {
+        barColor = "#ef4444"; // red-500
+    } else if (timeLeft <= timeLimit * 0.4) {
+        barColor = "#eab308"; // yellow-500
+    } else {
+        barColor = "#22c55e"; // green-500
+    }
+
+    return (
+        <div className={`flex items-center gap-2 bg-white/10 px-3 py-1 rounded-full ${isUrgent ? 'animate-pulse' : ''}`}>
+            <span className={`text-sm font-bold ${isUrgent ? 'text-red-400' : 'text-gray-400'}`}>
+                ⏱ {timeLeft}s
+            </span>
+            <div className="w-16 h-2 rounded-full bg-white/10 overflow-hidden">
+                <div
+                    className="h-full rounded-full transition-all duration-1000 ease-linear"
+                    style={{
+                        width: `${pct}%`,
+                        backgroundColor: barColor,
+                        boxShadow: isUrgent ? `0 0 8px ${barColor}` : "none",
+                    }}
+                />
+            </div>
+        </div>
+    );
+}
+
 function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameState: any }) {
     const [input, setInput] = useState("");
     const [feedback, setFeedback] = useState<"ok" | "no" | null>(null);
+    const [feedbackMsg, setFeedbackMsg] = useState("");
     const [imgError, setImgError] = useState(false);
 
     const currentWord = gameState.words[gameState.index];
@@ -143,9 +196,11 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
 
         if (isCorrect) {
             setFeedback("ok");
+            setFeedbackMsg(randomFrom(CORRECT_MESSAGES));
             playSfx("success");
         } else {
             setFeedback("no");
+            setFeedbackMsg(randomFrom(INCORRECT_MESSAGES));
             playSfx("error");
         }
     };
@@ -180,11 +235,16 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
             {/* Header Stats */}
             <div className="flex justify-between items-center py-4 px-2 text-sm font-bold text-gray-400 shrink-0">
                 <div className="bg-white/10 px-3 py-1 rounded-full">{gameState.index + 1} / {gameState.words.length}</div>
-                <div className={`bg-white/10 px-3 py-1 rounded-full ${(gameState.timeLeft || 10) < 5 ? 'text-red-400 animate-pulse' : ''}`}>
-                    {gameState.timeLeft !== null ? `⏱ ${gameState.timeLeft}s` : '∞'}
-                </div>
+                {gameState.timeLeft !== null && diff.timeLimit ? (
+                    <TimerBar timeLeft={gameState.timeLeft} timeLimit={diff.timeLimit} />
+                ) : (
+                    <div className="bg-white/10 px-3 py-1 rounded-full">∞</div>
+                )}
                 <div className="bg-yellow-500/20 text-yellow-300 px-3 py-1 rounded-full">Score: {gameState.score}</div>
             </div>
+
+            {/* Progress Bar */}
+            <ProgressBar current={gameState.index + 1} total={gameState.words.length} />
 
             {/* Game Area */}
             <div className="flex-1 flex flex-col items-center justify-center min-h-0 relative">
@@ -245,12 +305,12 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
                             {feedback === "ok" ? "✅" : "❌"}
                         </div>
                         <h3 className="text-3xl font-bold text-white mb-2">
-                            {feedback === "ok" ? "¡Correcto!" : "¡Incorrecto!"}
+                            {feedback === "ok" ? feedbackMsg : `${feedbackMsg}`}
                         </h3>
                         {feedback === "no" && (
                             <div className="flex items-center gap-3 mb-8">
                                 <p className="text-xl text-gray-300">
-                                    Era: <span className="font-bold text-yellow-400 text-2xl mx-2">{currentWord.w.toUpperCase()}</span>
+                                    <span className="font-bold text-yellow-400 text-2xl mx-2">{currentWord.w.toUpperCase()}</span>
                                 </p>
                                 <button
                                     onClick={() => playWordAudio(currentWord.w)}
@@ -261,7 +321,7 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
                                 </button>
                             </div>
                         )}
-                        <button onClick={nextWord} className="bg-white text-black font-bold text-xl px-12 py-4 rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-xl">
+                        <button onClick={nextWord} className="bg-white text-black font-bold text-xl px-12 py-4 rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-xl min-h-[56px]">
                             Siguiente ➡
                         </button>
                     </div>
@@ -278,9 +338,9 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
                     {letters.slice(10, 19).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
                 </div>
                 <div className="grid grid-cols-10 gap-1 sm:gap-1.5 px-8">
-                    <button type="button" onClick={() => handleKey("BACK")} className="col-span-2 bg-red-500/20 active:bg-red-500/40 text-red-200 rounded-lg font-bold flex items-center justify-center text-lg shadow-md border-b-2 border-red-900/50 transform active:translate-y-[2px] transition-all">⌫</button>
+                    <button type="button" onClick={() => handleKey("BACK")} className="col-span-2 bg-red-500/20 active:bg-red-500/40 text-red-200 rounded-lg font-bold flex items-center justify-center text-lg shadow-md border-b-2 border-red-900/50 transform active:translate-y-[2px] transition-all min-h-[48px]">⌫</button>
                     {letters.slice(19, 26).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
-                    <button type="button" onClick={() => handleKey("ENTER")} className="col-span-2 bg-green-500 active:bg-green-600 text-white rounded-lg font-bold flex items-center justify-center text-lg shadow-md border-b-2 border-green-800 transform active:translate-y-[2px] transition-all">✓</button>
+                    <button type="button" onClick={() => handleKey("ENTER")} className="col-span-2 bg-green-500 active:bg-green-600 text-white rounded-lg font-bold flex items-center justify-center text-lg shadow-md border-b-2 border-green-800 transform active:translate-y-[2px] transition-all min-h-[48px]">✓</button>
                 </div>
             </div>
         </div>
@@ -292,7 +352,7 @@ function Key({ char, onClick }: { char: string, onClick: () => void }) {
         <button
             type="button"
             onClick={onClick}
-            className="aspect-[4/5] bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-lg text-lg sm:text-xl font-bold text-white shadow-md border-b-2 border-white/5 transform active:translate-y-[2px] active:border-b-0 transition-all select-none"
+            className="aspect-[4/5] bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-lg text-lg sm:text-xl font-bold text-white shadow-md border-b-2 border-white/5 transform active:translate-y-[2px] active:border-b-0 transition-all select-none min-h-[48px]"
         >
             {char}
         </button>
@@ -301,9 +361,30 @@ function Key({ char, onClick }: { char: string, onClick: () => void }) {
 
 function GameResults({ gameState, onRestart, profile }: { gameState: GameState, onRestart: any, profile: any }) {
     const diff = DIFFICULTY[gameState.diff];
-    const correct = gameState.answers.filter(a => a.ok).length;
+    const correct = gameState.answers.filter((a: any) => a.ok).length;
     const total = gameState.words.length;
     const accuracy = Math.round((correct / total) * 100);
+    const showConfetti = accuracy >= 80;
+
+    // Granular result messages
+    let resultEmoji: string;
+    let resultMessage: string;
+    if (accuracy === 100) {
+        resultEmoji = "🏆";
+        resultMessage = "¡PERFECTO! ¡Eres una leyenda del deletreo!";
+    } else if (accuracy >= 80) {
+        resultEmoji = "⭐";
+        resultMessage = "¡Increíble! ¡Casi perfecto!";
+    } else if (accuracy >= 60) {
+        resultEmoji = "💪";
+        resultMessage = "¡Buen trabajo! Vas mejorando";
+    } else if (accuracy >= 40) {
+        resultEmoji = "🌟";
+        resultMessage = "¡Buen intento! La práctica hace al maestro";
+    } else {
+        resultEmoji = "🎯";
+        resultMessage = "¡No te rindas! Cada intento te hace mejor";
+    }
 
     useEffect(() => {
         if (gameState.score > 0) {
@@ -312,12 +393,14 @@ function GameResults({ gameState, onRestart, profile }: { gameState: GameState, 
     }, []);
 
     return (
-        <div className="max-w-md mx-auto p-4 text-center h-full flex flex-col justify-center">
+        <div className="max-w-md mx-auto p-4 text-center h-full flex flex-col justify-center relative">
+            {showConfetti && <Confetti />}
+
             <div className="text-8xl mb-6 animate-bounce">
-                {accuracy >= 80 ? "🏆" : accuracy >= 50 ? "⭐" : "💪"}
+                {resultEmoji}
             </div>
             <h2 className="text-4xl font-bold mb-2 text-white">
-                {accuracy >= 80 ? "¡Increíble!" : "¡Buen intento!"}
+                {resultMessage}
             </h2>
             <p className="text-gray-400 mb-12 text-lg">{diff.label} • <span className="text-yellow-400 font-bold">{gameState.score} Puntos</span></p>
 
@@ -333,10 +416,10 @@ function GameResults({ gameState, onRestart, profile }: { gameState: GameState, 
             </div>
 
             <div className="flex gap-4">
-                <button onClick={onRestart} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-900/20 active:scale-95 transition-transform">
+                <button onClick={onRestart} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-900/20 active:scale-95 transition-transform min-h-[56px]">
                     🔄 Jugar otra vez
                 </button>
-                <a href="/" className="flex-1 flex items-center justify-center bg-white/10 hover:bg-white/20 text-white font-bold py-4 rounded-2xl active:scale-95 transition-transform">
+                <a href="/" className="flex-1 flex items-center justify-center bg-white/10 hover:bg-white/20 text-white font-bold py-4 rounded-2xl active:scale-95 transition-transform min-h-[56px]">
                     🏠 Salir
                 </a>
             </div>
