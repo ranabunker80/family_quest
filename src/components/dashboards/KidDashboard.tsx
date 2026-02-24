@@ -5,11 +5,51 @@ import { MissionCard } from "@/components/economy/MissionCard";
 import { RewardCard } from "@/components/economy/RewardCard";
 import Link from "next/link";
 
+function EmptyState({ emoji, message, cta }: { emoji: string; message: string; cta?: string }) {
+    return (
+        <div className="flex flex-col items-center justify-center py-16 animate-fade-in">
+            <div className="text-7xl mb-4 animate-bounce-slow">{emoji}</div>
+            <p className="text-lg font-bold text-gray-300 text-center mb-2">{message}</p>
+            {cta && <p className="text-sm text-gray-500 text-center">{cta}</p>}
+        </div>
+    );
+}
+
+function StaggerItem({ children, index }: { children: React.ReactNode; index: number }) {
+    return (
+        <div
+            className="animate-fade-in-up"
+            style={{ animationDelay: `${index * 80}ms`, animationFillMode: "both" }}
+        >
+            {children}
+        </div>
+    );
+}
+
 export default function KidDashboard({ profile, missions, rewards, history }: { profile: any, missions: any[], rewards: any[], history: any[] }) {
     const [activeTab, setActiveTab] = useState("missions");
 
     return (
         <div>
+            {/* Inline keyframes for stagger animations */}
+            <style>{`
+                @keyframes fade-in-up {
+                    from { opacity: 0; transform: translateY(16px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                @keyframes fade-in {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+                @keyframes bounce-slow {
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(-8px); }
+                }
+                .animate-fade-in-up { animation: fade-in-up 0.4s ease-out; }
+                .animate-fade-in { animation: fade-in 0.5s ease-out; }
+                .animate-bounce-slow { animation: bounce-slow 2s ease-in-out infinite; }
+            `}</style>
+
             {/* Tabs */}
             <div className="flex gap-2 mb-8 overflow-x-auto pb-2 no-scrollbar">
                 <Tab label="📋 Misiones" id="missions" active={activeTab} set={setActiveTab} />
@@ -22,46 +62,60 @@ export default function KidDashboard({ profile, missions, rewards, history }: { 
             <div className="min-h-[400px]">
                 {activeTab === "missions" && (
                     <div className="space-y-6">
-                        <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-6 mb-6">
+                        <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-6 mb-6 animate-fade-in">
                             <h3 className="text-xl font-bold text-blue-300 mb-2">Misiones Diarias</h3>
                             <p className="text-gray-400 text-sm">Completa estas tareas para ganar monedas y comprar premios.</p>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {missions.map((m) => (
-                                <MissionCard key={m.id} mission={m} />
-                            ))}
-                        </div>
+                        {missions.length === 0 ? (
+                            <EmptyState
+                                emoji="🎯"
+                                message="¡No hay misiones aún!"
+                                cta="Pide a tus papás que agreguen una"
+                            />
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {missions.map((m, i) => (
+                                    <StaggerItem key={m.id} index={i}>
+                                        <MissionCard mission={m} />
+                                    </StaggerItem>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
 
                 {activeTab === "games" && (
                     <div className="space-y-6">
-                        <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-6 mb-6">
+                        <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-6 mb-6 animate-fade-in">
                             <h3 className="text-xl font-bold text-purple-300 mb-2">Sala de Juegos</h3>
                             <p className="text-gray-400 text-sm">Diviértete y aprende para ganar puntos extra automáticamente.</p>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
                             {/* Spelling Bee Card */}
-                            <Link href="/game" className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-yellow-400/50 hover:bg-white/10 transition-all cursor-pointer group relative overflow-hidden">
-                                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-9xl">🐝</div>
-                                <div className="relative z-10">
-                                    <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🐝</div>
-                                    <h3 className="text-2xl font-bold text-white mb-2">Spelling Bee</h3>
-                                    <p className="text-gray-400 text-sm mb-4">Deletrea palabras en inglés y gana monedas por cada acierto.</p>
-                                    <span className="inline-block bg-yellow-500/20 text-yellow-300 text-xs font-bold px-3 py-1 rounded-full">
-                                        +5 a +45 Pts
-                                    </span>
-                                </div>
-                            </Link>
+                            <StaggerItem index={0}>
+                                <Link href="/game" className="block bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-yellow-400/50 hover:bg-white/10 transition-all cursor-pointer group relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-9xl">🐝</div>
+                                    <div className="relative z-10">
+                                        <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🐝</div>
+                                        <h3 className="text-2xl font-bold text-white mb-2">Spelling Bee</h3>
+                                        <p className="text-gray-400 text-sm mb-4">Deletrea palabras en inglés y gana monedas por cada acierto.</p>
+                                        <span className="inline-block bg-yellow-500/20 text-yellow-300 text-xs font-bold px-3 py-1 rounded-full">
+                                            +5 a +45 Pts
+                                        </span>
+                                    </div>
+                                </Link>
+                            </StaggerItem>
 
                             {/* Coming Soon */}
-                            <div className="bg-white/5 border border-white/5 rounded-3xl p-6 opacity-50 grayscale flex items-center justify-center">
-                                <div className="text-center">
-                                    <div className="text-4xl mb-2">🔒</div>
-                                    <p className="font-bold">Próximamente</p>
+                            <StaggerItem index={1}>
+                                <div className="bg-white/5 border border-white/5 rounded-3xl p-6 opacity-50 grayscale flex items-center justify-center min-h-[200px]">
+                                    <div className="text-center">
+                                        <div className="text-4xl mb-2">🔒</div>
+                                        <p className="font-bold">Próximamente</p>
+                                    </div>
                                 </div>
-                            </div>
+                            </StaggerItem>
 
                         </div>
                     </div>
@@ -69,37 +123,56 @@ export default function KidDashboard({ profile, missions, rewards, history }: { 
 
                 {activeTab === "shop" && (
                     <div className="space-y-6">
-                        <div className="bg-teal-500/10 border border-teal-500/20 rounded-2xl p-6 mb-6">
+                        <div className="bg-teal-500/10 border border-teal-500/20 rounded-2xl p-6 mb-6 animate-fade-in">
                             <h3 className="text-xl font-bold text-teal-300 mb-2">Tienda de Premios</h3>
                             <p className="text-gray-400 text-sm">Usa tus monedas para canjear recompensas increíbles.</p>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {rewards.map((r) => (
-                                <RewardCard key={r.id} reward={r} userCoins={profile.coins} />
-                            ))}
-                        </div>
+                        {rewards.length === 0 ? (
+                            <EmptyState
+                                emoji="🎁"
+                                message="¡Pronto habrá premios!"
+                                cta="Sigue jugando y acumulando puntos"
+                            />
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {rewards.map((r, i) => (
+                                    <StaggerItem key={r.id} index={i}>
+                                        <RewardCard reward={r} userCoins={profile.coins} />
+                                    </StaggerItem>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
 
                 {activeTab === "history" && (
                     <div className="space-y-4">
-                        {history.length === 0 && <p className="text-gray-500 text-center py-8">No hay actividad reciente.</p>}
-                        {history.map((h) => (
-                            <div key={h.id} className="bg-white/5 border border-white/10 rounded-xl p-4 flex justify-between items-center">
-                                <div>
-                                    <p className="font-bold text-white text-sm">{h.description}</p>
-                                    <p className="text-xs text-gray-500">{new Date(h.created_at).toLocaleDateString()}</p>
-                                </div>
-                                <div className="text-right">
-                                    <span className={`font-bold ${h.amount > 0 ? 'text-teal-400' : 'text-red-400'}`}>
-                                        {h.amount > 0 ? '+' : ''}{h.amount}
-                                    </span>
-                                    <div className="text-[10px] uppercase tracking-wider text-gray-500">
-                                        {h.status === 'pending' ? '⏳ Pendiente' : h.status === 'approved' ? '✅ Aprobado' : '❌ Rechazado'}
+                        {history.length === 0 ? (
+                            <EmptyState
+                                emoji="📜"
+                                message="Aquí aparecerá tu historial de aventuras"
+                                cta="Completa misiones y juega para empezar"
+                            />
+                        ) : (
+                            history.map((h, i) => (
+                                <StaggerItem key={h.id} index={i}>
+                                    <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex justify-between items-center">
+                                        <div>
+                                            <p className="font-bold text-white text-sm">{h.description}</p>
+                                            <p className="text-xs text-gray-500">{new Date(h.created_at).toLocaleDateString()}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className={`font-bold ${h.amount > 0 ? 'text-teal-400' : 'text-red-400'}`}>
+                                                {h.amount > 0 ? '+' : ''}{h.amount}
+                                            </span>
+                                            <div className="text-[10px] uppercase tracking-wider text-gray-500">
+                                                {h.status === 'pending' ? '⏳ Pendiente' : h.status === 'approved' ? '✅ Aprobado' : '❌ Rechazado'}
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
-                        ))}
+                                </StaggerItem>
+                            ))
+                        )}
                     </div>
                 )}
             </div>
