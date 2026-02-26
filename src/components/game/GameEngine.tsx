@@ -231,9 +231,9 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
     const letters = "QWERTYUIOPASDFGHJKLZXCVBNM".split("");
 
     return (
-        <div className="flex flex-col h-full max-w-lg md:max-w-full mx-auto pb-4 md:px-6">
+        <div className="flex flex-col h-full max-w-lg lg:max-w-full mx-auto pb-4 lg:pb-2">
             {/* Header Stats */}
-            <div className="flex justify-between items-center py-4 px-2 text-sm md:text-base font-bold text-gray-400 shrink-0">
+            <div className="flex justify-between items-center py-4 lg:py-2 px-2 text-sm md:text-base font-bold text-gray-400 shrink-0">
                 <div className="bg-white/10 px-3 py-1 rounded-full">{gameState.index + 1} / {gameState.words.length}</div>
                 {gameState.timeLeft !== null && diff.timeLimit ? (
                     <TimerBar timeLeft={gameState.timeLeft} timeLimit={diff.timeLimit} />
@@ -246,61 +246,82 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
             {/* Progress Bar */}
             <ProgressBar current={gameState.index + 1} total={gameState.words.length} />
 
-            {/* Game Area */}
-            <div className="flex-1 flex flex-col items-center justify-center min-h-0 relative">
+            {/* Content: vertical on mobile, side-by-side on landscape tablet */}
+            <div className="flex-1 flex flex-col lg:flex-row min-h-0 lg:gap-4 relative">
 
-                {/* Hint Section */}
-                <div className={`transition-all duration-300 transform flex flex-col items-center mb-4 ${feedback === 'no' ? 'animate-shake' : ''}`}>
+                {/* LEFT PANEL: Hint area (image, speaker, category) */}
+                <div className="lg:w-[35%] flex flex-col items-center justify-center shrink-0 lg:shrink lg:min-h-0 mb-2 lg:mb-0">
                     {/* Hint: image with emoji fallback, or "?" in Hard mode */}
                     {diff.showHint ? (
                         !imgError && hint.image ? (
                             <img
                                 src={hint.image}
                                 alt=""
-                                className="w-28 h-28 sm:w-32 sm:h-32 md:w-40 md:h-40 object-contain mb-2 drop-shadow-xl"
+                                className="w-24 h-24 sm:w-32 sm:h-32 lg:w-48 lg:h-48 object-contain mb-2 drop-shadow-xl"
                                 onError={() => setImgError(true)}
                                 draggable={false}
                             />
                         ) : (
-                            <div className="text-7xl md:text-8xl mb-2 drop-shadow-xl">{hint.emoji}</div>
+                            <div className="text-6xl lg:text-8xl mb-2 drop-shadow-xl">{hint.emoji}</div>
                         )
                     ) : (
-                        <div className="text-7xl md:text-8xl mb-2 drop-shadow-xl">❓</div>
+                        <div className="text-6xl lg:text-8xl mb-2 drop-shadow-xl">❓</div>
                     )}
 
                     {/* Listen button */}
                     <button
                         onClick={() => playWordAudio(currentWord.w)}
-                        className="text-3xl mb-2 opacity-70 hover:opacity-100 active:scale-90 transition-all"
+                        className="text-3xl lg:text-4xl mb-2 opacity-70 hover:opacity-100 active:scale-90 transition-all"
                         aria-label="Escuchar pronunciación"
                     >
                         🔊
                     </button>
 
-                    <div className="text-lg md:text-xl font-bold uppercase tracking-widest mb-6" style={{ color: cat.color }}>{cat.emoji} {currentWord.c}</div>
-
-                    {/* Word Placeholder */}
-                    <div className="flex gap-2 md:gap-4 justify-center mb-2">
-                        {Array.from({ length: currentWord.w.length }).map((_, i) => (
-                            <div key={i} className={`w-10 h-12 sm:w-12 sm:h-14 md:w-16 md:h-[72px] rounded-xl md:rounded-2xl border-2 flex items-center justify-center text-2xl md:text-4xl font-bold uppercase transition-all shadow-lg
-                       ${input[i]
-                                    ? 'border-white bg-white/20 text-white translate-y-[-4px]'
-                                    : 'border-white/10 bg-black/20 text-gray-600'}`}>
-                                {input[i] || ""}
-                            </div>
-                        ))}
-                    </div>
-
-                    {diff.showFirst && (
-                        <div className="text-xs text-yellow-500/50 font-mono mt-2 tracking-[1em] h-4">
-                            {currentWord.w[0].toUpperCase()}{"_".repeat(currentWord.w.length - 1)}
-                        </div>
-                    )}
+                    <div className="text-base lg:text-xl font-bold uppercase tracking-widest" style={{ color: cat.color }}>{cat.emoji} {currentWord.c}</div>
                 </div>
 
-                {/* Feedback Overlay (Absolute over Game Area) */}
+                {/* RIGHT PANEL: Letter boxes + Keyboard */}
+                <div className="flex-1 flex flex-col min-h-0">
+
+                    {/* Letter boxes - centered in available space */}
+                    <div className="flex-1 flex flex-col items-center justify-center min-h-0">
+                        <div className={`flex gap-2 lg:gap-4 justify-center mb-2 transition-all duration-300 ${feedback === 'no' ? 'animate-shake' : ''}`}>
+                            {Array.from({ length: currentWord.w.length }).map((_, i) => (
+                                <div key={i} className={`w-10 h-12 sm:w-12 sm:h-14 lg:w-16 lg:h-[72px] rounded-xl lg:rounded-2xl border-2 flex items-center justify-center text-2xl lg:text-4xl font-bold uppercase transition-all shadow-lg
+                                    ${input[i]
+                                        ? 'border-white bg-white/20 text-white translate-y-[-4px]'
+                                        : 'border-white/10 bg-black/20 text-gray-600'}`}>
+                                    {input[i] || ""}
+                                </div>
+                            ))}
+                        </div>
+
+                        {diff.showFirst && (
+                            <div className="text-xs lg:text-sm text-yellow-500/50 font-mono mt-1 tracking-[1em] h-4">
+                                {currentWord.w[0].toUpperCase()}{"_".repeat(currentWord.w.length - 1)}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* On-Screen Keyboard - pinned to bottom of right panel */}
+                    <div data-game-keyboard autoCorrect="off" autoCapitalize="off" spellCheck={false} inputMode="none" className="shrink-0 pt-2 pb-4 lg:pb-1 px-1 lg:px-0">
+                        <div className="grid grid-cols-10 gap-1 sm:gap-1.5 md:gap-2 lg:gap-3 mb-1.5 lg:mb-2">
+                            {letters.slice(0, 10).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
+                        </div>
+                        <div className="grid grid-cols-10 gap-1 sm:gap-1.5 md:gap-2 lg:gap-3 mb-1.5 lg:mb-2 px-4 md:px-[5%]">
+                            {letters.slice(10, 19).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
+                        </div>
+                        <div className="grid grid-cols-10 gap-1 sm:gap-1.5 md:gap-2 lg:gap-3 px-8 md:px-[10%] lg:px-[5%]">
+                            <button type="button" onClick={() => handleKey("BACK")} className="col-span-2 bg-red-500/20 active:bg-red-500/40 text-red-200 rounded-lg lg:rounded-2xl font-bold flex items-center justify-center text-lg md:text-2xl lg:text-3xl shadow-md border-b-2 border-red-900/50 transform active:translate-y-[2px] transition-all min-h-[48px] md:min-h-[56px] lg:min-h-[64px]">⌫</button>
+                            {letters.slice(19, 26).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
+                            <button type="button" onClick={() => handleKey("ENTER")} className="col-span-2 bg-green-500 active:bg-green-600 text-white rounded-lg lg:rounded-2xl font-bold flex items-center justify-center text-lg md:text-2xl lg:text-3xl shadow-md border-b-2 border-green-800 transform active:translate-y-[2px] transition-all min-h-[48px] md:min-h-[56px] lg:min-h-[64px]">✓</button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Feedback Overlay - covers both panels */}
                 {feedback && (
-                    <div className="absolute inset-x-0 top-0 bottom-0 z-20 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md rounded-3xl animate-in fade-in zoom-in duration-200">
+                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 backdrop-blur-md rounded-3xl animate-in fade-in zoom-in duration-200">
                         <div className="text-8xl mb-4 animate-bounce filter drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]">
                             {feedback === "ok" ? "✅" : "❌"}
                         </div>
@@ -326,22 +347,6 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
                         </button>
                     </div>
                 )}
-
-            </div>
-
-            {/* On-Screen Keyboard */}
-            <div data-game-keyboard autoCorrect="off" autoCapitalize="off" spellCheck={false} inputMode="none" className="shrink-0 pt-2 pb-6 px-1">
-                <div className="grid grid-cols-10 gap-1 sm:gap-1.5 md:gap-3 mb-2 md:mb-3">
-                    {letters.slice(0, 10).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
-                </div>
-                <div className="grid grid-cols-10 gap-1 sm:gap-1.5 md:gap-3 mb-2 md:mb-3 px-4 md:px-[5%]">
-                    {letters.slice(10, 19).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
-                </div>
-                <div className="grid grid-cols-10 gap-1 sm:gap-1.5 md:gap-3 px-8 md:px-[10%]">
-                    <button type="button" onClick={() => handleKey("BACK")} className="col-span-2 bg-red-500/20 active:bg-red-500/40 text-red-200 rounded-lg md:rounded-2xl font-bold flex items-center justify-center text-lg md:text-3xl shadow-md border-b-2 border-red-900/50 transform active:translate-y-[2px] transition-all min-h-[48px] md:min-h-[72px]">⌫</button>
-                    {letters.slice(19, 26).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
-                    <button type="button" onClick={() => handleKey("ENTER")} className="col-span-2 bg-green-500 active:bg-green-600 text-white rounded-lg md:rounded-2xl font-bold flex items-center justify-center text-lg md:text-3xl shadow-md border-b-2 border-green-800 transform active:translate-y-[2px] transition-all min-h-[48px] md:min-h-[72px]">✓</button>
-                </div>
             </div>
         </div>
     );
@@ -352,7 +357,7 @@ function Key({ char, onClick }: { char: string, onClick: () => void }) {
         <button
             type="button"
             onClick={onClick}
-            className="aspect-[4/5] md:aspect-auto bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-lg md:rounded-2xl text-lg sm:text-xl md:text-3xl font-bold text-white shadow-md border-b-2 border-white/5 transform active:translate-y-[2px] active:border-b-0 transition-all select-none min-h-[48px] md:min-h-[72px]"
+            className="aspect-[4/5] md:aspect-auto bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-lg lg:rounded-2xl text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-white shadow-md border-b-2 border-white/5 transform active:translate-y-[2px] active:border-b-0 transition-all select-none min-h-[48px] md:min-h-[56px] lg:min-h-[64px]"
         >
             {char}
         </button>
