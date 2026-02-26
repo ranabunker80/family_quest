@@ -107,14 +107,19 @@ export default function KidDashboard({ profile, missions, rewards, history }: { 
                                 </Link>
                             </StaggerItem>
 
-                            {/* Coming Soon */}
+                            {/* Math Contest Card */}
                             <StaggerItem index={1}>
-                                <div className="bg-white/5 border border-white/5 rounded-3xl p-6 opacity-50 grayscale flex items-center justify-center min-h-[200px]">
-                                    <div className="text-center">
-                                        <div className="text-4xl mb-2">🔒</div>
-                                        <p className="font-bold">Próximamente</p>
+                                <Link href="/math-contest" className="block bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-teal-400/50 hover:bg-white/10 transition-all cursor-pointer group relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-9xl">🏆</div>
+                                    <div className="relative z-10">
+                                        <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🏆</div>
+                                        <h3 className="text-2xl font-bold text-white mb-2">Copa de Mates</h3>
+                                        <p className="text-gray-400 text-sm mb-4">Practica para la Copa Nacional de Matemáticas con problemas de tu nivel.</p>
+                                        <span className="inline-block bg-teal-500/20 text-teal-300 text-xs font-bold px-3 py-1 rounded-full">
+                                            +5 a +60 Pts
+                                        </span>
                                     </div>
-                                </div>
+                                </Link>
                             </StaggerItem>
 
                         </div>

@@ -129,3 +129,49 @@ export async function submitGameResult(score: number, difficulty: string, accura
 
     revalidatePath("/");
 }
+
+export async function submitMathResult(
+    score: number,
+    difficulty: string,
+    accuracy: number,
+    details?: {
+        problemsCorrect: number;
+        problemsTotal: number;
+        timeSeconds: number;
+        categoryBreakdown: Record<string, { correct: number; total: number }>;
+    }
+) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // 1. Log in ledger (coins, auto-approved)
+    await supabase.from("ledger").insert({
+        kid_id: user.id,
+        amount: score,
+        description: `Juego: Copa de Mates (${difficulty}) - ${accuracy}%`,
+        type: "bonus",
+        status: "approved",
+    });
+
+    // 2. Save to game_results for analytics
+    await supabase.from("game_results").insert({
+        kid_id: user.id,
+        game_type: "math_contest",
+        difficulty,
+        score,
+        accuracy,
+        words_correct: details?.problemsCorrect ?? null,
+        words_total: details?.problemsTotal ?? null,
+        time_seconds: details?.timeSeconds ?? null,
+        details: details?.categoryBreakdown ? JSON.stringify(details.categoryBreakdown) : null,
+    });
+
+    // 3. Update profile coins
+    const { data: profile } = await supabase.from("profiles").select("coins").eq("id", user.id).single();
+    if (profile) {
+        await supabase.from("profiles").update({ coins: profile.coins + score }).eq("id", user.id);
+    }
+
+    revalidatePath("/");
+}

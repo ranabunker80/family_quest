@@ -1,13 +1,13 @@
 "use client";
 
-export default function ProgressBar({ current, total }: { current: number; total: number }) {
+export default function ProgressBar({ current, total, label = "Palabra" }: { current: number; total: number; label?: string }) {
     const progress = ((current) / total) * 100;
 
     return (
         <div className="w-full px-4 py-2 shrink-0">
             <div className="flex justify-between items-center mb-1.5">
                 <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    Palabra {current} de {total}
+                    {label} {current} de {total}
                 </span>
                 <span className="text-xs font-bold text-teal-400">
                     {Math.round(progress)}%
