@@ -231,7 +231,7 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
     const letters = "QWERTYUIOPASDFGHJKLZXCVBNM".split("");
 
     return (
-        <div className="flex flex-col h-full max-w-lg mx-auto pb-4">
+        <div className="flex flex-col h-full max-w-lg md:max-w-2xl mx-auto pb-4">
             {/* Header Stats */}
             <div className="flex justify-between items-center py-4 px-2 text-sm font-bold text-gray-400 shrink-0">
                 <div className="bg-white/10 px-3 py-1 rounded-full">{gameState.index + 1} / {gameState.words.length}</div>
@@ -280,9 +280,9 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
                     <div className="text-lg font-bold uppercase tracking-widest mb-6" style={{ color: cat.color }}>{cat.emoji} {currentWord.c}</div>
 
                     {/* Word Placeholder */}
-                    <div className="flex gap-2 justify-center mb-2">
+                    <div className="flex gap-2 md:gap-3 justify-center mb-2">
                         {Array.from({ length: currentWord.w.length }).map((_, i) => (
-                            <div key={i} className={`w-10 h-12 sm:w-12 sm:h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold uppercase transition-all shadow-lg
+                            <div key={i} className={`w-10 h-12 sm:w-12 sm:h-14 md:w-14 md:h-16 rounded-xl border-2 flex items-center justify-center text-2xl md:text-3xl font-bold uppercase transition-all shadow-lg
                        ${input[i]
                                     ? 'border-white bg-white/20 text-white translate-y-[-4px]'
                                     : 'border-white/10 bg-black/20 text-gray-600'}`}>
@@ -330,17 +330,17 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
             </div>
 
             {/* On-Screen Keyboard */}
-            <div data-game-keyboard autoCorrect="off" autoCapitalize="off" spellCheck={false} inputMode="none" className="shrink-0 pt-2 pb-6 px-1">
-                <div className="grid grid-cols-10 gap-1 sm:gap-1.5 mb-2">
+            <div data-game-keyboard autoCorrect="off" autoCapitalize="off" spellCheck={false} inputMode="none" className="shrink-0 pt-2 pb-6 px-1 md:px-4">
+                <div className="grid grid-cols-10 gap-1 sm:gap-1.5 md:gap-2.5 mb-2 md:mb-3">
                     {letters.slice(0, 10).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
                 </div>
-                <div className="grid grid-cols-10 gap-1 sm:gap-1.5 mb-2 px-4">
+                <div className="grid grid-cols-10 gap-1 sm:gap-1.5 md:gap-2.5 mb-2 md:mb-3 px-4 md:px-8">
                     {letters.slice(10, 19).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
                 </div>
-                <div className="grid grid-cols-10 gap-1 sm:gap-1.5 px-8">
-                    <button type="button" onClick={() => handleKey("BACK")} className="col-span-2 bg-red-500/20 active:bg-red-500/40 text-red-200 rounded-lg font-bold flex items-center justify-center text-lg shadow-md border-b-2 border-red-900/50 transform active:translate-y-[2px] transition-all min-h-[48px]">⌫</button>
+                <div className="grid grid-cols-10 gap-1 sm:gap-1.5 md:gap-2.5 px-8 md:px-16">
+                    <button type="button" onClick={() => handleKey("BACK")} className="col-span-2 bg-red-500/20 active:bg-red-500/40 text-red-200 rounded-lg md:rounded-xl font-bold flex items-center justify-center text-lg md:text-2xl shadow-md border-b-2 border-red-900/50 transform active:translate-y-[2px] transition-all min-h-[48px] md:min-h-[64px]">⌫</button>
                     {letters.slice(19, 26).map(l => <Key key={l} char={l} onClick={() => handleKey(l)} />)}
-                    <button type="button" onClick={() => handleKey("ENTER")} className="col-span-2 bg-green-500 active:bg-green-600 text-white rounded-lg font-bold flex items-center justify-center text-lg shadow-md border-b-2 border-green-800 transform active:translate-y-[2px] transition-all min-h-[48px]">✓</button>
+                    <button type="button" onClick={() => handleKey("ENTER")} className="col-span-2 bg-green-500 active:bg-green-600 text-white rounded-lg md:rounded-xl font-bold flex items-center justify-center text-lg md:text-2xl shadow-md border-b-2 border-green-800 transform active:translate-y-[2px] transition-all min-h-[48px] md:min-h-[64px]">✓</button>
                 </div>
             </div>
         </div>
@@ -352,7 +352,7 @@ function Key({ char, onClick }: { char: string, onClick: () => void }) {
         <button
             type="button"
             onClick={onClick}
-            className="aspect-[4/5] bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-lg text-lg sm:text-xl font-bold text-white shadow-md border-b-2 border-white/5 transform active:translate-y-[2px] active:border-b-0 transition-all select-none min-h-[48px]"
+            className="aspect-[4/5] bg-white/10 hover:bg-white/20 active:bg-white/30 rounded-lg md:rounded-xl text-lg sm:text-xl md:text-2xl font-bold text-white shadow-md border-b-2 border-white/5 transform active:translate-y-[2px] active:border-b-0 transition-all select-none min-h-[48px] md:min-h-[64px]"
         >
             {char}
         </button>
