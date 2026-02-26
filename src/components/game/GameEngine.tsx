@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { CATEGORIES, HINTS, DIFFICULTY, type Hint } from "@/lib/words";
-import { unlockAudio, playWordAudio, playSfx, preloadWordAudio } from "@/lib/audio";
+import { unlockAudio, playWordAudio, playSfx, preloadWordAudio, playLetterAudio } from "@/lib/audio";
 import { submitGameResult } from "@/lib/actions";
 import ProgressBar from "./ProgressBar";
 import Confetti from "./Confetti";
@@ -186,6 +186,7 @@ function GamePlay({ gameState, setGameState }: { gameState: GameState, setGameSt
         } else {
             if (input.length < currentWord.w.length) {
                 setInput(prev => prev + key);
+                playLetterAudio(key);
             }
         }
     };

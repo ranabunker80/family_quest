@@ -133,3 +133,18 @@ function fallbackSpeak(word: string): void {
   utterance.rate = 0.85;
   window.speechSynthesis.speak(utterance);
 }
+
+/**
+ * Pronounce a single letter name in English (e.g. "A" → "ay", "B" → "bee").
+ * Uses Web Speech API — no audio files needed.
+ * Cancels any pending speech to avoid queue buildup on fast typing.
+ */
+export function playLetterAudio(letter: string): void {
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(letter.toUpperCase());
+  utterance.lang = "en-US";
+  utterance.rate = 1.0;
+  window.speechSynthesis.speak(utterance);
+}
