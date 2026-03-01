@@ -36,7 +36,7 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 // --- Main Component ---
-export default function ExamEngine({ profile, subject }: { profile: any; subject: SubjectWorld }) {
+export default function ExamEngine({ profile, subject, previewMode = false }: { profile: any; subject: SubjectWorld; previewMode?: boolean }) {
     const [gameState, setGameState] = useState<ExamGameState | null>(null);
     const [selectedLevel, setSelectedLevel] = useState<ExamLevel | null>(null);
 
@@ -55,12 +55,27 @@ export default function ExamEngine({ profile, subject }: { profile: any; subject
         });
     };
 
+    const previewBanner = previewMode ? (
+        <div className="bg-amber-500/15 border border-amber-500/30 rounded-2xl px-4 py-3 mb-4 flex items-center gap-3">
+            <span className="text-xl">👀</span>
+            <div>
+                <p className="text-amber-300 font-bold text-sm">Modo Preview</p>
+                <p className="text-amber-300/60 text-xs">Los resultados NO se guardan</p>
+            </div>
+        </div>
+    ) : null;
+
     if (!selectedLevel) {
-        return <LevelSelector subject={subject} onSelect={(l) => { unlockAudio(); setSelectedLevel(l); startGame(l); }} />;
+        return (
+            <>
+                {previewBanner}
+                <LevelSelector subject={subject} onSelect={(l) => { unlockAudio(); setSelectedLevel(l); startGame(l); }} />
+            </>
+        );
     }
 
     if (gameState?.status === "results") {
-        return <ExamResults gameState={gameState} subject={subject} onRestart={() => { setSelectedLevel(null); setGameState(null); }} profile={profile} />;
+        return <ExamResults gameState={gameState} subject={subject} onRestart={() => { setSelectedLevel(null); setGameState(null); }} profile={profile} previewMode={previewMode} />;
     }
 
     return <ExamPlay gameState={gameState!} setGameState={setGameState} subject={subject} />;
@@ -635,7 +650,7 @@ function WordProblemQ({ question, onAnswer, disabled }: { question: ExamQuestion
 }
 
 // --- Results ---
-function ExamResults({ gameState, subject, onRestart, profile }: { gameState: ExamGameState; subject: SubjectWorld; onRestart: () => void; profile: any }) {
+function ExamResults({ gameState, subject, onRestart, profile, previewMode = false }: { gameState: ExamGameState; subject: SubjectWorld; onRestart: () => void; profile: any; previewMode?: boolean }) {
     const correct = gameState.answers.filter(a => a.correct).length;
     const total = gameState.questions.length;
     const accuracy = Math.round((correct / total) * 100);
@@ -661,7 +676,7 @@ function ExamResults({ gameState, subject, onRestart, profile }: { gameState: Ex
     }
 
     useEffect(() => {
-        if (gameState.score > 0) {
+        if (!previewMode && gameState.score > 0) {
             const timeSeconds = Math.round((Date.now() - gameState.startTime) / 1000);
             submitExamResult(gameState.score, gameState.subject, gameState.level.id, accuracy, {
                 questionsCorrect: correct,
