@@ -122,6 +122,21 @@ export default function KidDashboard({ profile, missions, rewards, history }: { 
                                 </Link>
                             </StaggerItem>
 
+                            {/* Exam Prep Card */}
+                            <StaggerItem index={2}>
+                                <Link href="/exam-prep" className="block bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-orange-400/50 hover:bg-white/10 transition-all cursor-pointer group relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-9xl">📚</div>
+                                    <div className="relative z-10">
+                                        <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">📚</div>
+                                        <h3 className="text-2xl font-bold text-white mb-2">Misión Examen</h3>
+                                        <p className="text-gray-400 text-sm mb-4">Estudia para tu examen de forma divertida e interactiva.</p>
+                                        <span className="inline-block bg-orange-500/20 text-orange-300 text-xs font-bold px-3 py-1 rounded-full">
+                                            3 Mundos · 10 Niveles
+                                        </span>
+                                    </div>
+                                </Link>
+                            </StaggerItem>
+
                         </div>
                     </div>
                 )}
