@@ -107,7 +107,16 @@ export async function rejectTransaction(id: string) {
     revalidatePath("/");
 }
 
-export async function submitGameResult(score: number, difficulty: string, accuracy: number) {
+export async function submitGameResult(
+    score: number,
+    difficulty: string,
+    accuracy: number,
+    details?: {
+        wordsCorrect: number;
+        wordsTotal: number;
+        timeSeconds: number;
+    }
+) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -121,7 +130,19 @@ export async function submitGameResult(score: number, difficulty: string, accura
         status: "approved",
     });
 
-    // 2. Update profile coins
+    // 2. Save to game_results for analytics
+    await supabase.from("game_results").insert({
+        kid_id: user.id,
+        game_type: "spelling_bee",
+        difficulty,
+        score,
+        accuracy,
+        words_correct: details?.wordsCorrect ?? null,
+        words_total: details?.wordsTotal ?? null,
+        time_seconds: details?.timeSeconds ?? null,
+    });
+
+    // 3. Update profile coins
     const { data: profile } = await supabase.from("profiles").select("coins").eq("id", user.id).single();
     if (profile) {
         await supabase.from("profiles").update({ coins: profile.coins + score }).eq("id", user.id);

@@ -292,6 +292,132 @@ export async function getKidGameStats(kidId: string) {
 }
 
 // ============================================================================
+// Kid Progress Analytics
+// ============================================================================
+
+export interface KidProgressData {
+    kidId: string;
+    spellingBee: {
+        totalGames: number;
+        avgAccuracy: number;
+        recentGames: Array<{
+            difficulty: string;
+            accuracy: number;
+            score: number;
+            wordsCorrect: number | null;
+            wordsTotal: number | null;
+            createdAt: string;
+        }>;
+        byDifficulty: Record<string, { games: number; avgAccuracy: number }>;
+    };
+    mathContest: {
+        totalGames: number;
+        avgAccuracy: number;
+        recentGames: Array<{
+            difficulty: string;
+            accuracy: number;
+            score: number;
+            createdAt: string;
+        }>;
+        byCategory: Record<string, { correct: number; total: number; accuracy: number }>;
+        weakCategories: string[];
+        strongCategories: string[];
+    };
+}
+
+export async function getKidProgress(kidId: string): Promise<KidProgressData> {
+    const supabase = await createClient();
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const { data: results } = await supabase
+        .from("game_results")
+        .select("*")
+        .eq("kid_id", kidId)
+        .gte("created_at", thirtyDaysAgo.toISOString())
+        .order("created_at", { ascending: false });
+
+    const allResults = results || [];
+    const spellingResults = allResults.filter(r => r.game_type === "spelling_bee");
+    const mathResults = allResults.filter(r => r.game_type === "math_contest");
+
+    // --- Spelling Bee Analytics ---
+    const spellingByDiff: Record<string, { games: number; totalAccuracy: number }> = {};
+    for (const r of spellingResults) {
+        if (!spellingByDiff[r.difficulty]) spellingByDiff[r.difficulty] = { games: 0, totalAccuracy: 0 };
+        spellingByDiff[r.difficulty].games++;
+        spellingByDiff[r.difficulty].totalAccuracy += r.accuracy;
+    }
+
+    const spellingByDiffFinal: Record<string, { games: number; avgAccuracy: number }> = {};
+    for (const [diff, data] of Object.entries(spellingByDiff)) {
+        spellingByDiffFinal[diff] = {
+            games: data.games,
+            avgAccuracy: Math.round(data.totalAccuracy / data.games),
+        };
+    }
+
+    // --- Math Contest Analytics ---
+    const mathByCategory: Record<string, { correct: number; total: number }> = {};
+    for (const r of mathResults) {
+        if (r.details) {
+            const breakdown = typeof r.details === "string" ? JSON.parse(r.details) : r.details;
+            for (const [cat, stats] of Object.entries(breakdown as Record<string, { correct: number; total: number }>)) {
+                if (!mathByCategory[cat]) mathByCategory[cat] = { correct: 0, total: 0 };
+                mathByCategory[cat].correct += (stats as { correct: number; total: number }).correct;
+                mathByCategory[cat].total += (stats as { correct: number; total: number }).total;
+            }
+        }
+    }
+
+    const mathByCategoryFinal: Record<string, { correct: number; total: number; accuracy: number }> = {};
+    const weakCategories: string[] = [];
+    const strongCategories: string[] = [];
+
+    for (const [cat, stats] of Object.entries(mathByCategory)) {
+        const accuracy = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
+        mathByCategoryFinal[cat] = { ...stats, accuracy };
+        if (accuracy < 50 && stats.total >= 2) weakCategories.push(cat);
+        if (accuracy >= 80 && stats.total >= 2) strongCategories.push(cat);
+    }
+
+    return {
+        kidId,
+        spellingBee: {
+            totalGames: spellingResults.length,
+            avgAccuracy: spellingResults.length > 0
+                ? Math.round(spellingResults.reduce((s, r) => s + r.accuracy, 0) / spellingResults.length)
+                : 0,
+            recentGames: spellingResults.slice(0, 10).map(r => ({
+                difficulty: r.difficulty,
+                accuracy: r.accuracy,
+                score: r.score,
+                wordsCorrect: r.words_correct,
+                wordsTotal: r.words_total,
+                createdAt: r.created_at,
+            })),
+            byDifficulty: spellingByDiffFinal,
+        },
+        mathContest: {
+            totalGames: mathResults.length,
+            avgAccuracy: mathResults.length > 0
+                ? Math.round(mathResults.reduce((s, r) => s + r.accuracy, 0) / mathResults.length)
+                : 0,
+            recentGames: mathResults.slice(0, 10).map(r => ({
+                difficulty: r.difficulty,
+                accuracy: r.accuracy,
+                score: r.score,
+                createdAt: r.created_at,
+            })),
+            byCategory: mathByCategoryFinal,
+            weakCategories,
+            strongCategories,
+        },
+    };
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
 

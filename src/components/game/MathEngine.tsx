@@ -51,7 +51,7 @@ type MathAnswer = {
 };
 
 // --- Main Component ---
-export default function MathEngine({ profile }: { profile: any }) {
+export default function MathEngine({ profile, previewMode = false }: { profile: any; previewMode?: boolean }) {
     const [gameState, setGameState] = useState<MathGameState | null>(null);
     const [selectedDiff, setSelectedDiff] = useState<MathDifficultyKey | null>(null);
 
@@ -72,12 +72,27 @@ export default function MathEngine({ profile }: { profile: any }) {
         });
     };
 
+    const previewBanner = previewMode ? (
+        <div className="bg-amber-500/15 border border-amber-500/30 rounded-2xl px-4 py-3 mb-4 flex items-center gap-3">
+            <span className="text-xl">👀</span>
+            <div>
+                <p className="text-amber-300 font-bold text-sm">Modo Preview</p>
+                <p className="text-amber-300/60 text-xs">Los resultados NO se guardan</p>
+            </div>
+        </div>
+    ) : null;
+
     if (!selectedDiff) {
-        return <MathSelector onSelect={(d) => { unlockAudio(); setSelectedDiff(d); startGame(d); }} />;
+        return (
+            <>
+                {previewBanner}
+                <MathSelector onSelect={(d) => { unlockAudio(); setSelectedDiff(d); startGame(d); }} />
+            </>
+        );
     }
 
     if (gameState?.status === "results") {
-        return <MathResults gameState={gameState} onRestart={() => { setSelectedDiff(null); setGameState(null); }} profile={profile} />;
+        return <MathResults gameState={gameState} onRestart={() => { setSelectedDiff(null); setGameState(null); }} profile={profile} previewMode={previewMode} />;
     }
 
     return <MathPlay gameState={gameState!} setGameState={setGameState} />;
@@ -431,7 +446,7 @@ function MultipleChoiceOptions({
 }
 
 // --- Results ---
-function MathResults({ gameState, onRestart, profile }: { gameState: MathGameState; onRestart: () => void; profile: any }) {
+function MathResults({ gameState, onRestart, profile, previewMode = false }: { gameState: MathGameState; onRestart: () => void; profile: any; previewMode?: boolean }) {
     const diff = MATH_DIFFICULTY[gameState.diff];
     const correct = gameState.answers.filter(a => a.correct).length;
     const total = gameState.problems.length;
@@ -467,7 +482,7 @@ function MathResults({ gameState, onRestart, profile }: { gameState: MathGameSta
     }
 
     useEffect(() => {
-        if (gameState.score > 0) {
+        if (!previewMode && gameState.score > 0) {
             const timeSeconds = Math.round((Date.now() - gameState.startTime) / 1000);
             submitMathResult(gameState.score, gameState.diff, accuracy, {
                 problemsCorrect: correct,

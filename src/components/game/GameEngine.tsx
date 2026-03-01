@@ -37,7 +37,7 @@ type GameState = {
     status: "playing" | "results";
 };
 
-export default function GameEngine({ profile }: { profile: any }) {
+export default function GameEngine({ profile, previewMode = false }: { profile: any; previewMode?: boolean }) {
     const [gameState, setGameState] = useState<GameState | null>(null);
     const [selectedDiff, setSelectedDiff] = useState<keyof typeof DIFFICULTY | null>(null);
 
@@ -69,12 +69,27 @@ export default function GameEngine({ profile }: { profile: any }) {
         });
     };
 
+    const previewBanner = previewMode ? (
+        <div className="bg-amber-500/15 border border-amber-500/30 rounded-2xl px-4 py-3 mb-4 flex items-center gap-3">
+            <span className="text-xl">👀</span>
+            <div>
+                <p className="text-amber-300 font-bold text-sm">Modo Preview</p>
+                <p className="text-amber-300/60 text-xs">Los resultados NO se guardan</p>
+            </div>
+        </div>
+    ) : null;
+
     if (!selectedDiff) {
-        return <GameSelector onSelect={(d) => { unlockAudio(); setSelectedDiff(d); startGame(d); }} />;
+        return (
+            <>
+                {previewBanner}
+                <GameSelector onSelect={(d) => { unlockAudio(); setSelectedDiff(d); startGame(d); }} />
+            </>
+        );
     }
 
     if (gameState?.status === "results") {
-        return <GameResults gameState={gameState} onRestart={() => setSelectedDiff(null)} profile={profile} />;
+        return <GameResults gameState={gameState} onRestart={() => setSelectedDiff(null)} profile={profile} previewMode={previewMode} />;
     }
 
     return <GamePlay gameState={gameState!} setGameState={setGameState} />;
@@ -365,7 +380,7 @@ function Key({ char, onClick }: { char: string, onClick: () => void }) {
     )
 }
 
-function GameResults({ gameState, onRestart, profile }: { gameState: GameState, onRestart: any, profile: any }) {
+function GameResults({ gameState, onRestart, profile, previewMode = false }: { gameState: GameState; onRestart: any; profile: any; previewMode?: boolean }) {
     const diff = DIFFICULTY[gameState.diff];
     const correct = gameState.answers.filter((a: any) => a.ok).length;
     const total = gameState.words.length;
@@ -393,8 +408,13 @@ function GameResults({ gameState, onRestart, profile }: { gameState: GameState, 
     }
 
     useEffect(() => {
-        if (gameState.score > 0) {
-            submitGameResult(gameState.score, gameState.diff, accuracy);
+        if (!previewMode && gameState.score > 0) {
+            const timeSeconds = Math.round((Date.now() - gameState.startTime) / 1000);
+            submitGameResult(gameState.score, gameState.diff, accuracy, {
+                wordsCorrect: correct,
+                wordsTotal: total,
+                timeSeconds,
+            });
         }
     }, []);
 

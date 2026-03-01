@@ -5,6 +5,7 @@ import FamilyOverview from "@/components/parent/FamilyOverview";
 import NotesPanel from "@/components/parent/NotesPanel";
 import ContentUploader from "@/components/parent/ContentUploader";
 import FocusAreaSelector from "@/components/parent/FocusAreaSelector";
+import KidProgressView from "@/components/parent/KidProgressView";
 import { approveTransaction, rejectTransaction } from "@/lib/actions";
 
 // Temporary local interfaces until Supabase types are updated
@@ -42,6 +43,8 @@ export interface PendingApproval {
 const TABS = [
   { id: "approvals", label: "✅ Aprobaciones" },
   { id: "overview", label: "👨‍👩‍👧‍👦 Familia" },
+  { id: "preview", label: "🎮 Probar Juegos" },
+  { id: "progress", label: "📊 Progreso" },
   { id: "notes", label: "💬 Notas" },
   { id: "content", label: "📚 Contenido" },
   { id: "focus", label: "🎯 Enfoque" },
@@ -121,9 +124,66 @@ export default function ParentDashboardClient({
       <div>
         {activeTab === "approvals" && <ApprovalsPanel pendingApprovals={pendingApprovals} />}
         {activeTab === "overview" && <FamilyOverview kids={kids} />}
+        {activeTab === "preview" && <GamePreviewPanel />}
+        {activeTab === "progress" && <KidProgressView kids={kids} />}
         {activeTab === "notes" && <NotesPanel parentProfile={parentProfile} />}
         {activeTab === "content" && <ContentUploader kids={kids} />}
         {activeTab === "focus" && <FocusAreaSelector kids={kids} />}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Game Preview Panel ─── */
+
+function GamePreviewPanel() {
+  return (
+    <div className="space-y-6">
+      <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-6">
+        <h3 className="text-xl font-bold text-purple-300 mb-2">Probar Juegos</h3>
+        <p className="text-gray-400 text-sm">
+          Juega exactamente como tus hijos ven los juegos. Los resultados NO se guardan.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <a
+          href="/game?preview=true"
+          className="block bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-yellow-400/50 hover:bg-white/10 transition-all group relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-9xl">
+            🐝
+          </div>
+          <div className="relative z-10">
+            <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🐝</div>
+            <h3 className="text-2xl font-bold text-white mb-2">Spelling Bee</h3>
+            <p className="text-gray-400 text-sm mb-4">
+              Deletrea palabras en inglés. Ve la experiencia exacta de tus hijos.
+            </p>
+            <span className="inline-block bg-amber-500/20 text-amber-300 text-xs font-bold px-3 py-1 rounded-full">
+              👀 Modo Preview
+            </span>
+          </div>
+        </a>
+
+        <a
+          href="/math-contest?preview=true"
+          className="block bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-teal-400/50 hover:bg-white/10 transition-all group relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-9xl">
+            🏆
+          </div>
+          <div className="relative z-10">
+            <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🏆</div>
+            <h3 className="text-2xl font-bold text-white mb-2">Copa de Mates</h3>
+            <p className="text-gray-400 text-sm mb-4">
+              Problemas de la Copa Nacional. Ve el nivel de dificultad en primera persona.
+            </p>
+            <span className="inline-block bg-amber-500/20 text-amber-300 text-xs font-bold px-3 py-1 rounded-full">
+              👀 Modo Preview
+            </span>
+          </div>
+        </a>
       </div>
     </div>
   );
