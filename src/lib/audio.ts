@@ -135,6 +135,17 @@ function fallbackSpeak(word: string): void {
 }
 
 /**
+ * Play a custom audio file from any path with Web Speech API fallback.
+ */
+export function playCustomAudio(path: string, fallbackText?: string): void {
+  audioReady.then(() => {
+    tryPlayFile(path, () => {
+      if (fallbackText) fallbackSpeak(fallbackText);
+    });
+  });
+}
+
+/**
  * Pronounce a single letter name in English (e.g. "A" → "ay", "B" → "bee").
  * Uses Web Speech API — no audio files needed.
  * Cancels any pending speech to avoid queue buildup on fast typing.

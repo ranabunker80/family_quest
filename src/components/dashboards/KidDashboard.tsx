@@ -137,6 +137,23 @@ export default function KidDashboard({ profile, missions, rewards, history }: { 
                                 </Link>
                             </StaggerItem>
 
+                            {/* Phrase Challenge Card — solo Isaac */}
+                            {profile?.full_name?.toLowerCase().includes("isaac") && (
+                                <StaggerItem index={3}>
+                                    <Link href="/phrase-challenge" className="block bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-pink-400/50 hover:bg-white/10 transition-all cursor-pointer group relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-9xl">🌈</div>
+                                        <div className="relative z-10">
+                                            <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🌈</div>
+                                            <h3 className="text-2xl font-bold text-white mb-2">Phrase Challenge</h3>
+                                            <p className="text-gray-400 text-sm mb-4">Aprende una frase en inglés paso a paso. 5 niveles de aventura.</p>
+                                            <span className="inline-block bg-pink-500/20 text-pink-300 text-xs font-bold px-3 py-1 rounded-full">
+                                                +10 a +300 Pts
+                                            </span>
+                                        </div>
+                                    </Link>
+                                </StaggerItem>
+                            )}
+
                         </div>
                     </div>
                 )}
