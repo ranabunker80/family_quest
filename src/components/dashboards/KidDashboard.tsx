@@ -26,6 +26,12 @@ function StaggerItem({ children, index }: { children: React.ReactNode; index: nu
     );
 }
 
+function profileMatchesKid(profile: any, kid: string): boolean {
+    const name = (profile?.full_name || "").toLowerCase();
+    const email = (profile?.email || "").toLowerCase();
+    return name.includes(kid) || email.includes(kid);
+}
+
 export default function KidDashboard({ profile, missions, rewards, history }: { profile: any, missions: any[], rewards: any[], history: any[] }) {
     const [activeTab, setActiveTab] = useState("missions");
 
@@ -138,7 +144,7 @@ export default function KidDashboard({ profile, missions, rewards, history }: { 
                             </StaggerItem>
 
                             {/* Phrase Challenge Card — Isaac y Elias */}
-                            {(profile?.full_name?.toLowerCase().includes("isaac") || profile?.full_name?.toLowerCase().includes("elias")) && (
+                            {(profileMatchesKid(profile, "isaac") || profileMatchesKid(profile, "elias")) && (
                                 <StaggerItem index={3}>
                                     <Link href="/phrase-challenge" className="block bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-pink-400/50 hover:bg-white/10 transition-all cursor-pointer group relative overflow-hidden">
                                         <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-9xl">🌈</div>

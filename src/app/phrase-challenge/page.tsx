@@ -27,6 +27,8 @@ export default async function PhrasePage({
 
     const isPreview = params.preview === "true" && profile?.role === "parent";
     const name = (profile?.full_name || "").toLowerCase();
+    const email = (profile?.email || "").toLowerCase();
+    const matchesKid = (kid: string) => name.includes(kid) || email.includes(kid);
 
     // Parents blocked unless preview mode
     if (profile?.role === "parent" && !isPreview) {
@@ -42,10 +44,10 @@ export default async function PhrasePage({
         );
     }
 
-    // Determine which config to use based on kid name
+    // Determine which config to use based on kid name or email
     let config = isPreview ? ISAAC_CONFIG : null; // Default preview to Isaac
-    if (name.includes("isaac")) config = ISAAC_CONFIG;
-    else if (name.includes("elias")) config = ELIAS_CONFIG;
+    if (matchesKid("isaac")) config = ISAAC_CONFIG;
+    else if (matchesKid("elias")) config = ELIAS_CONFIG;
 
     // Restrict to Isaac and Elias only
     if (!config && !isPreview) {
