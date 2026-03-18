@@ -137,8 +137,8 @@ export default function KidDashboard({ profile, missions, rewards, history }: { 
                                 </Link>
                             </StaggerItem>
 
-                            {/* Phrase Challenge Card — solo Isaac */}
-                            {profile?.full_name?.toLowerCase().includes("isaac") && (
+                            {/* Phrase Challenge Card — Isaac y Elias */}
+                            {(profile?.full_name?.toLowerCase().includes("isaac") || profile?.full_name?.toLowerCase().includes("elias")) && (
                                 <StaggerItem index={3}>
                                     <Link href="/phrase-challenge" className="block bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-pink-400/50 hover:bg-white/10 transition-all cursor-pointer group relative overflow-hidden">
                                         <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-9xl">🌈</div>

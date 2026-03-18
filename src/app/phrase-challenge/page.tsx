@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import PhraseEngine from "@/components/game/PhraseEngine";
+import { ISAAC_CONFIG, ELIAS_CONFIG } from "@/lib/phrase-data";
 
 export default async function PhrasePage({
     searchParams,
@@ -25,6 +26,7 @@ export default async function PhrasePage({
         .single();
 
     const isPreview = params.preview === "true" && profile?.role === "parent";
+    const name = (profile?.full_name || "").toLowerCase();
 
     // Parents blocked unless preview mode
     if (profile?.role === "parent" && !isPreview) {
@@ -40,14 +42,19 @@ export default async function PhrasePage({
         );
     }
 
-    // Restrict to Isaac only (kids)
-    if (profile?.role === "kid" && !profile?.full_name?.toLowerCase().includes("isaac")) {
+    // Determine which config to use based on kid name
+    let config = isPreview ? ISAAC_CONFIG : null; // Default preview to Isaac
+    if (name.includes("isaac")) config = ISAAC_CONFIG;
+    else if (name.includes("elias")) config = ELIAS_CONFIG;
+
+    // Restrict to Isaac and Elias only
+    if (!config && !isPreview) {
         return (
             <div className="min-h-screen flex items-center justify-center p-4 text-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900">
                 <div>
                     <div className="text-6xl mb-4">🌈</div>
                     <h1 className="text-2xl font-bold mb-2 text-white">Juego especial</h1>
-                    <p className="text-gray-400 mb-6">Este juego es una misión especial para Isaac. ¡Pronto habrá más retos para todos!</p>
+                    <p className="text-gray-400 mb-6">Este juego es una misión especial. ¡Pronto habrá más retos para todos!</p>
                     <a href="/" className="bg-blue-500 px-6 py-2 rounded-xl text-white font-bold">Volver al inicio</a>
                 </div>
             </div>
@@ -72,7 +79,7 @@ export default async function PhrasePage({
                 </header>
 
                 <div className="flex-1 min-h-0">
-                    <PhraseEngine profile={profile} previewMode={isPreview} />
+                    <PhraseEngine profile={profile} previewMode={isPreview} config={config!} />
                 </div>
             </div>
         </div>

@@ -1,19 +1,59 @@
-// Phrase Challenge data — "A season full of color and joy"
+// Phrase Challenge data — configurable per kid
 
-export const PHRASE_TEXT = "A season full of color and joy";
-export const PHRASE_WORDS = ["A", "season", "full", "of", "color", "and", "joy"] as const;
+export type PhraseConfig = {
+  kidName: string;
+  phraseText: string;
+  phraseWords: string[];
+  distractors: string[];
+  blankSets: number[][];
+  scrambleIndices: number[];
+  audioDir: string;      // e.g. "/audio/phrase"
+  imageDir: string;      // e.g. "/images/phrase"
+  sceneImage: string;    // filename
+  revealImage: string;   // filename
+  diplomaImage: string;  // filename
+  congratsFile: string;  // filename
+};
 
-export const DISTRACTORS = ["winter", "empty", "bright", "spring", "sadness"] as const;
+// --- Isaac: "A season full of color and joy" ---
+export const ISAAC_CONFIG: PhraseConfig = {
+  kidName: "Isaac",
+  phraseText: "A season full of color and joy",
+  phraseWords: ["A", "season", "full", "of", "color", "and", "joy"],
+  distractors: ["winter", "empty", "bright", "spring", "sadness"],
+  blankSets: [
+    [1, 4, 6], // season, color, joy
+    [2, 4, 6], // full, color, joy
+    [1, 2, 6], // season, full, joy
+  ],
+  scrambleIndices: [1, 2, 4, 6], // season, full, color, joy
+  audioDir: "/audio/phrase",
+  imageDir: "/images/phrase",
+  sceneImage: "season-scene.png",
+  revealImage: "season-scene-reveal.png",
+  diplomaImage: "phrase-master-diploma.png",
+  congratsFile: "congratulations.mp3",
+};
 
-// Words to blank out in Level 2 (always blank the content words, keep structure words visible)
-export const BLANK_SETS: number[][] = [
-  [1, 4, 6], // season, color, joy
-  [2, 4, 6], // full, color, joy
-  [1, 2, 6], // season, full, joy
-];
-
-// Words to scramble in Level 3 (never scramble "A" or "of" — too short)
-export const SCRAMBLE_INDICES = [1, 2, 4, 6]; // season, full, color, joy
+// --- Elias: "We are celebrating spring" ---
+export const ELIAS_CONFIG: PhraseConfig = {
+  kidName: "Elias",
+  phraseText: "We are celebrating spring",
+  phraseWords: ["We", "are", "celebrating", "spring"],
+  distractors: ["winter", "running", "autumn", "they"],
+  blankSets: [
+    [2, 3], // celebrating, spring
+    [1, 2], // are, celebrating
+    [1, 3], // are, spring
+  ],
+  scrambleIndices: [2, 3], // celebrating, spring
+  audioDir: "/audio/phrase-elias",
+  imageDir: "/images/phrase-elias",
+  sceneImage: "spring-scene.png",
+  revealImage: "spring-reveal.png",
+  diplomaImage: "phrase-master-diploma.png",
+  congratsFile: "congratulations.mp3",
+};
 
 export const LEVEL_CONFIG = [
   { id: 1, title: "Escucha y Descubre", emoji: "👂", maxPts: 20, desc: "Ordena las palabras" },
