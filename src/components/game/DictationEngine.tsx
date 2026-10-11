@@ -23,8 +23,7 @@ type Stage = 1 | 2 | 3 | 4;
 type Screen =
     | { name: "intro" | "learn" | "fill" | "listen" | "final" | "prize" }
     | { name: "stage-intro"; stage: Stage }
-    | { name: "review"; missed: Missed[] }
-    | { name: "practice"; missed: Missed[] };
+    | { name: "review"; missed: Missed[] };
 
 type Missed = { word: DictationWord; typed: string };
 
@@ -36,7 +35,7 @@ const STAGE_INFO: Record<Stage, { emoji: string; title: string; text: string }> 
     1: { emoji: "👀", title: "Conoce las palabras", text: "Mira el dibujo, lee qué significa y toca la palabra para escucharla." },
     2: { emoji: "🧩", title: "Completa la palabra", text: "Primero toca la bocina para escuchar la palabra. Después escribe las letras que faltan." },
     3: { emoji: "👂", title: "Escucha y completa", text: "La palabra suena sola. Solo te doy la primera letra: tú escribes las demás." },
-    4: { emoji: "🏆", title: "Dictado final", text: `Te dicto las ${TOTAL} palabras y tú escribes todas las letras. Para ganar tu mitad de la tarjeta necesitas las ${TOTAL} perfectas.` },
+    4: { emoji: "🏆", title: "Dictado final", text: `Te dicto las ${TOTAL} palabras y tú escribes todas las letras. Si te equivocas puedes corregir la palabra una sola vez. Para ganar tu mitad de la tarjeta necesitas las ${TOTAL} bien.` },
 };
 
 const CORRECT_MSGS = ["¡Correcto!", "¡Genial!", "¡Increíble!", "¡Eres un crack!", "¡Excelente!"];
@@ -64,10 +63,12 @@ export default function DictationEngine({
     const [screen, setScreen] = useState<Screen>({ name: "intro" });
     const [savedStage, setSavedStage] = useState<Stage>(1);
     const [winDate, setWinDate] = useState<string | null>(wonAt);
+    const [missedWords, setMissedWords] = useState<string[]>([]);
     const startTime = useRef(0);
     const finalAttempts = useRef(0);
 
     const storageKey = `dictation:${DICTATION_LIST_ID}:${profile?.id ?? "anon"}`;
+    const missedKey = `${storageKey}:missed`;
 
     // Retomar la etapa donde se quedó (solo en este dispositivo)
     useEffect(() => {
@@ -75,8 +76,16 @@ export default function DictationEngine({
             const saved = Number(localStorage.getItem(storageKey));
             // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage solo existe en el cliente
             if (saved >= 2 && saved <= 4) setSavedStage(saved as Stage);
+            const missed = JSON.parse(localStorage.getItem(missedKey) || "[]");
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage solo existe en el cliente
+            if (Array.isArray(missed)) setMissedWords(missed.filter((w) => typeof w === "string"));
         } catch { /* sin almacenamiento: empieza en la etapa 1 */ }
-    }, [storageKey]);
+    }, [storageKey, missedKey]);
+
+    const rememberMissed = (words: string[]) => {
+        setMissedWords(words);
+        try { localStorage.setItem(missedKey, JSON.stringify(words)); } catch { /* no crítico */ }
+    };
 
     const goToStage = useCallback((stage: Stage) => {
         try { localStorage.setItem(storageKey, String(stage)); } catch { /* no crítico */ }
@@ -100,6 +109,7 @@ export default function DictationEngine({
             });
         }
         try { localStorage.removeItem(storageKey); } catch { /* no crítico */ }
+        rememberMissed([]);
         setSavedStage(1);
         setScreen({ name: "prize" });
     };
@@ -110,7 +120,7 @@ export default function DictationEngine({
             case "learn": return 1;
             case "fill": return 2;
             case "listen": return 3;
-            case "final": case "review": case "practice": return 4;
+            case "final": case "review": return 4;
             default: return null;
         }
     };
@@ -162,20 +172,23 @@ export default function DictationEngine({
 
                 {screen.name === "final" && (
                     <FinalStage
-                        onDone={(missed) => (missed.length === 0 ? handleWin() : setScreen({ name: "review", missed }))}
+                        first={missedWords}
+                        onDone={(missed) => {
+                            if (missed.length === 0) return handleWin();
+                            rememberMissed(missed.map((m) => m.word.w));
+                            setScreen({ name: "review", missed });
+                        }}
                     />
                 )}
 
                 {screen.name === "review" && (
-                    <Review missed={screen.missed} onPractice={() => setScreen({ name: "practice", missed: screen.missed })} />
-                )}
-
-                {screen.name === "practice" && (
-                    <SpellStage
-                        key="practice"
-                        mode="listen"
-                        words={screen.missed.map((m) => m.word)}
-                        onDone={() => goToStage(4)}
+                    <Review
+                        missed={screen.missed}
+                        onRetry={() => {
+                            unlockAudio();
+                            finalAttempts.current += 1;
+                            setScreen({ name: "final" });
+                        }}
                     />
                 )}
 
@@ -531,15 +544,21 @@ function SpellStage({ mode, words, onDone }: { mode: "fill" | "listen"; words: D
 
 // ============================================================
 // ETAPA 4 — Dictado final: suena la palabra y se escriben todas las letras
-// Un solo intento por palabra. Sin cajas: como en el examen, no se sabe cuántas letras son.
+// Si se equivocan pueden corregir la palabra una sola vez. Sin cajas: como en el examen,
+// no se sabe cuántas letras son. Las palabras falladas en el dictado anterior salen primero.
 // ============================================================
 
-function FinalStage({ onDone }: { onDone: (missed: Missed[]) => void }) {
-    const [order] = useState(() => shuffleArray(DICTATION_WORDS));
+function FinalStage({ first, onDone }: { first: string[]; onDone: (missed: Missed[]) => void }) {
+    const [order] = useState(() => [
+        ...shuffleArray(DICTATION_WORDS.filter((w) => first.includes(w.w))),
+        ...shuffleArray(DICTATION_WORDS.filter((w) => !first.includes(w.w))),
+    ]);
     const [index, setIndex] = useState(0);
     const [typed, setTyped] = useState("");
     const [feedback, setFeedback] = useState<"ok" | "no" | null>(null);
     const [missed, setMissed] = useState<Missed[]>([]);
+    const [retried, setRetried] = useState(false);
+    const [shake, setShake] = useState(0);
 
     const word = order[index];
 
@@ -550,6 +569,7 @@ function FinalStage({ onDone }: { onDone: (missed: Missed[]) => void }) {
         setIndex(index + 1);
         setTyped("");
         setFeedback(null);
+        setRetried(false);
     }, [index, order.length, missed, onDone]);
 
     const handleKey = useCallback((key: string) => {
@@ -558,14 +578,17 @@ function FinalStage({ onDone }: { onDone: (missed: Missed[]) => void }) {
         if (key === "ENTER") {
             if (!typed) return;
             const ok = typed === word.w;
-            if (!ok) {
-                setMissed((m) => [...m, { word, typed }]);
-                playWord(word);
+            if (!ok) playWord(word);
+            if (!ok && !retried) {
+                // Primera falla: no se muestra la respuesta, se deja lo escrito para corregirlo
+                setRetried(true);
+                return setShake((n) => n + 1);
             }
+            if (!ok) setMissed((m) => [...m, { word, typed }]);
             return setFeedback(ok ? "ok" : "no");
         }
         setTyped((t) => (t.length < MAX_FREE_INPUT ? t + key.toLowerCase() : t));
-    }, [feedback, typed, word]);
+    }, [feedback, typed, word, retried]);
 
     useEffect(() => {
         if (feedback !== "ok") return;
@@ -587,11 +610,12 @@ function FinalStage({ onDone }: { onDone: (missed: Missed[]) => void }) {
 
             <div className="flex-1 flex flex-col min-h-0">
                 <div className="flex-1 flex flex-col items-center justify-center min-h-0 gap-3">
-                    <div className={`w-full max-w-xl min-h-[72px] rounded-2xl border-2 flex items-center justify-center px-4 text-3xl lg:text-5xl font-bold tracking-[0.15em] lowercase transition-colors ${feedback === "ok" ? "border-teal-400 bg-teal-400/20 text-teal-200" : feedback === "no" ? "border-red-400 bg-red-500/20 text-red-200 dictation-shake" : "border-white/20 bg-black/20 text-white"}`}>
+                    <div key={shake} className={`w-full max-w-xl min-h-[72px] rounded-2xl border-2 flex items-center justify-center px-4 text-3xl lg:text-5xl font-bold tracking-[0.15em] lowercase transition-colors ${feedback === "ok" ? "border-teal-400 bg-teal-400/20 text-teal-200" : feedback === "no" ? "border-red-400 bg-red-500/20 text-red-200 dictation-shake" : retried ? "border-yellow-400 bg-yellow-400/10 text-white dictation-shake" : "border-white/20 bg-black/20 text-white"}`}>
                         {typed}{!feedback && <span className="animate-pulse text-yellow-400">|</span>}
                     </div>
                     <div className="h-16 flex items-center justify-center gap-4">
-                        {!feedback && !typed && <div className="text-gray-400 font-bold">Escribe la palabra que escuchaste y toca ✓</div>}
+                        {!feedback && !retried && !typed && <div className="text-gray-400 font-bold">Escribe la palabra que escuchaste y toca ✓</div>}
+                        {!feedback && retried && <div className="text-yellow-300 font-bold text-lg">🤔 ¡Casi! Escúchala otra vez y corrígela. Te queda 1 oportunidad.</div>}
                         {feedback === "ok" && <div className="text-2xl font-bold text-teal-300">✅ ¡Correcto!</div>}
                         {feedback === "no" && (
                             <>
@@ -609,13 +633,13 @@ function FinalStage({ onDone }: { onDone: (missed: Missed[]) => void }) {
     );
 }
 
-function Review({ missed, onPractice }: { missed: Missed[]; onPractice: () => void }) {
+function Review({ missed, onRetry }: { missed: Missed[]; onRetry: () => void }) {
     return (
         <div className="h-full flex flex-col items-center justify-center text-center px-4 overflow-y-auto py-2">
             <div className="text-6xl mb-2">💪</div>
             <h2 className="text-3xl font-bold text-white mb-1">¡Casi lo logras!</h2>
             <p className="text-lg text-gray-300 mb-4">
-                Sacaste <b className="text-teal-300">{TOTAL - missed.length} de {TOTAL}</b>. Para ganar tu mitad necesitas las {TOTAL} perfectas. Practica {missed.length === 1 ? "esta" : "estas"} y vuelve a intentar el dictado.
+                Sacaste <b className="text-teal-300">{TOTAL - missed.length} de {TOTAL}</b>. Para ganar tu mitad necesitas las {TOTAL} bien. Fíjate bien en {missed.length === 1 ? "esta" : "estas"}: el dictado va a empezar con {missed.length === 1 ? "ella" : "ellas"}.
             </p>
             <div className="flex flex-wrap justify-center gap-3 mb-6 max-w-3xl">
                 {missed.map(({ word, typed }) => (
@@ -625,8 +649,8 @@ function Review({ missed, onPractice }: { missed: Missed[]; onPractice: () => vo
                     </button>
                 ))}
             </div>
-            <button onClick={onPractice} className="bg-green-500 hover:bg-green-400 text-white font-bold text-xl px-10 py-4 rounded-2xl shadow-xl active:scale-95 transition-all min-h-[64px]">
-                Practicar las que fallé ➡
+            <button onClick={onRetry} className="bg-green-500 hover:bg-green-400 text-white font-bold text-xl px-10 py-4 rounded-2xl shadow-xl active:scale-95 transition-all min-h-[64px]">
+                Volver al dictado ➡
             </button>
         </div>
     );
