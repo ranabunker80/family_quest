@@ -11,7 +11,7 @@ import {
 } from "@/lib/dictation-data";
 import { shuffleArray } from "@/lib/phrase-data";
 import { unlockAudio, playCustomAudio } from "@/lib/audio";
-import { submitDictationResult } from "@/lib/dictation-actions";
+import { submitDictationResult, notifyExistingDictationWin } from "@/lib/dictation-actions";
 import Confetti from "./Confetti";
 
 // --- Types ---
@@ -82,6 +82,17 @@ export default function DictationEngine({
         } catch { /* sin almacenamiento: empieza en la etapa 1 */ }
     }, [storageKey, missedKey]);
 
+    // Aviso a papá: una sola vez por tablet. Cubre a quien ganó antes de que existiera el aviso.
+    const notifiedKey = `${storageKey}:notified`;
+    useEffect(() => {
+        if (!wonAt || previewMode) return;
+        try {
+            if (localStorage.getItem(notifiedKey)) return;
+            localStorage.setItem(notifiedKey, "1");
+        } catch { return; }
+        notifyExistingDictationWin();
+    }, [wonAt, previewMode, notifiedKey]);
+
     const rememberMissed = (words: string[]) => {
         setMissedWords(words);
         try { localStorage.setItem(missedKey, JSON.stringify(words)); } catch { /* no crítico */ }
@@ -103,6 +114,7 @@ export default function DictationEngine({
         const now = new Date().toISOString();
         if (!winDate) setWinDate(now);
         if (!previewMode && !winDate) {
+            try { localStorage.setItem(notifiedKey, "1"); } catch { /* no crítico */ }
             submitDictationResult({
                 timeSeconds: Math.round((Date.now() - startTime.current) / 1000),
                 finalAttempts: finalAttempts.current,
