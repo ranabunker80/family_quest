@@ -56,6 +56,18 @@ export default function KidDashboard({ profile, missions, rewards, history }: { 
                 .animate-bounce-slow { animation: bounce-slow 2s ease-in-out infinite; }
             `}</style>
 
+            {/* Reto de Dictado — Isaac y Elias, visible desde cualquier pestaña */}
+            {(profileMatchesKid(profile, "isaac") || profileMatchesKid(profile, "elias")) && (
+                <Link href="/dictation-challenge" className="flex items-center gap-4 bg-gradient-to-r from-emerald-500/20 to-yellow-500/20 border border-emerald-400/40 rounded-3xl p-5 mb-6 hover:border-emerald-300 active:scale-[0.99] transition-all animate-fade-in">
+                    <div className="text-5xl shrink-0">✏️</div>
+                    <div className="flex-1 min-w-0">
+                        <h3 className="text-xl font-bold text-white">Reto de Dictado</h3>
+                        <p className="text-gray-300 text-sm">Escribe las 11 palabras perfectas y gana tu mitad de una tarjeta de Robux.</p>
+                    </div>
+                    <span className="shrink-0 bg-emerald-500 text-white font-bold px-5 py-3 rounded-2xl">Jugar ➡</span>
+                </Link>
+            )}
+
             {/* Tabs */}
             <div className="flex gap-2 mb-8 overflow-x-auto pb-2 no-scrollbar">
                 <Tab label="📋 Misiones" id="missions" active={activeTab} set={setActiveTab} />

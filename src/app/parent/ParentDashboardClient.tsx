@@ -222,6 +222,43 @@ function GamePreviewPanel() {
             </span>
           </div>
         </a>
+
+        <a
+          href="/dictation-challenge?preview=true&kid=isaac"
+          className="block bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-emerald-400/50 hover:bg-white/10 transition-all group relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-9xl">
+            ✏️
+          </div>
+          <div className="relative z-10">
+            <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">✏️</div>
+            <h3 className="text-2xl font-bold text-white mb-2">Reto de Dictado — Isaac</h3>
+            <p className="text-gray-400 text-sm mb-4">
+              11 palabras del examen en 4 etapas. Con las 11 perfectas gana su mitad de la tarjeta de Robux.
+            </p>
+            <span className="inline-block bg-amber-500/20 text-amber-300 text-xs font-bold px-3 py-1 rounded-full">
+              👀 Modo Preview
+            </span>
+          </div>
+        </a>
+        <a
+          href="/dictation-challenge?preview=true&kid=elias"
+          className="block bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-emerald-400/50 hover:bg-white/10 transition-all group relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-9xl">
+            ✏️
+          </div>
+          <div className="relative z-10">
+            <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">✏️</div>
+            <h3 className="text-2xl font-bold text-white mb-2">Reto de Dictado — Elías</h3>
+            <p className="text-gray-400 text-sm mb-4">
+              11 palabras del examen en 4 etapas. Con las 11 perfectas gana su mitad de la tarjeta de Robux.
+            </p>
+            <span className="inline-block bg-amber-500/20 text-amber-300 text-xs font-bold px-3 py-1 rounded-full">
+              👀 Modo Preview
+            </span>
+          </div>
+        </a>
       </div>
     </div>
   );
