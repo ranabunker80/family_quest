@@ -6,7 +6,9 @@ import NotesPanel from "@/components/parent/NotesPanel";
 import ContentUploader from "@/components/parent/ContentUploader";
 import FocusAreaSelector from "@/components/parent/FocusAreaSelector";
 import KidProgressView from "@/components/parent/KidProgressView";
+import QuestionsPanel from "@/components/parent/QuestionsPanel";
 import { approveTransaction, rejectTransaction } from "@/lib/actions";
+import type { FamilyQuestion } from "@/lib/question-actions";
 
 // Temporary local interfaces until Supabase types are updated
 export interface KidProfile {
@@ -42,6 +44,7 @@ export interface PendingApproval {
 
 const TABS = [
   { id: "approvals", label: "✅ Aprobaciones" },
+  { id: "questions", label: "❓ Preguntas" },
   { id: "overview", label: "👨‍👩‍👧‍👦 Familia" },
   { id: "preview", label: "🎮 Probar Juegos" },
   { id: "progress", label: "📊 Progreso" },
@@ -56,14 +59,17 @@ interface Props {
   parentProfile: ParentProfile;
   kids: KidProfile[];
   pendingApprovals: PendingApproval[];
+  questions: FamilyQuestion[];
 }
 
 export default function ParentDashboardClient({
   parentProfile,
   kids,
   pendingApprovals,
+  questions,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<TabId>("approvals");
+  const pendingQuestions = questions.filter((q) => q.answer === null).length;
+  const [activeTab, setActiveTab] = useState<TabId>(pendingQuestions > 0 ? "questions" : "approvals");
 
   const pendingCount = pendingApprovals.length;
 
@@ -116,6 +122,11 @@ export default function ParentDashboardClient({
                 {pendingCount}
               </span>
             )}
+            {tab.id === "questions" && pendingQuestions > 0 && activeTab !== "questions" && (
+              <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                {pendingQuestions}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -123,6 +134,7 @@ export default function ParentDashboardClient({
       {/* Tab Content */}
       <div>
         {activeTab === "approvals" && <ApprovalsPanel pendingApprovals={pendingApprovals} />}
+        {activeTab === "questions" && <QuestionsPanel questions={questions} />}
         {activeTab === "overview" && <FamilyOverview kids={kids} />}
         {activeTab === "preview" && <GamePreviewPanel />}
         {activeTab === "progress" && <KidProgressView kids={kids} />}

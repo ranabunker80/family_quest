@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import ParentDashboardClient from "./ParentDashboardClient";
 import { getPendingApprovals } from "@/lib/actions";
+import { getFamilyQuestions } from "@/lib/question-actions";
 
 export default async function ParentPage() {
   const supabase = await createClient();
@@ -28,12 +29,14 @@ export default async function ParentPage() {
 
   // Fetch full pending approvals (with kid profile data)
   const pendingApprovals = await getPendingApprovals();
+  const questions = await getFamilyQuestions();
 
   return (
     <ParentDashboardClient
       parentProfile={profile}
       kids={kids || []}
       pendingApprovals={pendingApprovals}
+      questions={questions}
     />
   );
 }
