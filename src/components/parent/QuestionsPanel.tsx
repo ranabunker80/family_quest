@@ -10,8 +10,11 @@ interface Props {
 const OTHER = "Otra respuesta";
 
 function QuestionCard({ question }: { question: FamilyQuestion }) {
-  const [choice, setChoice] = useState<string | null>(null);
-  const [text, setText] = useState("");
+  const answerIsOption = question.answer !== null && question.options.includes(question.answer);
+  const [choice, setChoice] = useState<string | null>(
+    question.answer === null ? null : answerIsOption ? question.answer : OTHER
+  );
+  const [text, setText] = useState(answerIsOption ? "" : question.answer ?? "");
   const [editing, setEditing] = useState(question.answer === null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -74,7 +77,7 @@ function QuestionCard({ question }: { question: FamilyQuestion }) {
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          rows={2}
+          rows={4}
           placeholder="Escribe tu respuesta..."
           className="w-full bg-white/10 border border-white/10 rounded-xl p-3 text-white text-base placeholder-gray-500 focus:outline-none focus:border-teal-400"
         />
