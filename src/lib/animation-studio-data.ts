@@ -1,0 +1,251 @@
+// Estudio de Animación — datos: partes del personaje, movimientos y escenarios.
+// Todo corre en la tablet; los dibujos se guardan solo en el navegador del niño.
+
+export const CHAR_W = 400;
+export const CHAR_H = 520;
+
+export type PartId = "legL" | "legR" | "body" | "armL" | "armR" | "head";
+
+export interface PartDef {
+  id: PartId;
+  label: string;
+  emoji: string;
+  // Punto de giro (articulación) en coordenadas del personaje
+  pivot: [number, number];
+  // Guía punteada que se muestra al dibujar
+  guide:
+    | { kind: "circle"; cx: number; cy: number; r: number }
+    | { kind: "rect"; x: number; y: number; w: number; h: number };
+}
+
+// Orden = orden de dibujado en el escenario (piernas atrás, cabeza al frente)
+export const PARTS: PartDef[] = [
+  { id: "legL", label: "Pierna", emoji: "🦵", pivot: [172, 330], guide: { kind: "rect", x: 150, y: 330, w: 44, h: 170 } },
+  { id: "legR", label: "Pierna", emoji: "🦵", pivot: [228, 330], guide: { kind: "rect", x: 206, y: 330, w: 44, h: 170 } },
+  { id: "body", label: "Cuerpo", emoji: "👕", pivot: [200, 330], guide: { kind: "rect", x: 140, y: 165, w: 120, h: 170 } },
+  { id: "armL", label: "Brazo", emoji: "💪", pivot: [132, 185], guide: { kind: "rect", x: 108, y: 175, w: 44, h: 150 } },
+  { id: "armR", label: "Brazo", emoji: "💪", pivot: [268, 185], guide: { kind: "rect", x: 248, y: 175, w: 44, h: 150 } },
+  { id: "head", label: "Cabeza", emoji: "🙂", pivot: [200, 165], guide: { kind: "circle", cx: 200, cy: 100, r: 70 } },
+];
+
+// Orden en que se le pide al niño dibujar
+export const DRAW_ORDER: PartId[] = ["head", "body", "armL", "armR", "legL", "legR"];
+
+export interface Stroke {
+  color: string; // "erase" = borrador
+  size: number;
+  pts: number[]; // x0,y0,x1,y1...
+}
+
+export type CharacterParts = Record<PartId, Stroke[]>;
+
+// Recorte de una foto (dibujo en papel) usado como parte del personaje.
+// x, y = centro en coordenadas del personaje.
+export interface PartImage {
+  src: string; // PNG data URL, ya recortado y sin el papel
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rot: number;
+  flip: boolean;
+}
+
+export type PartImages = Partial<Record<PartId, PartImage>>;
+
+// Boca de caricatura que se abre con la voz. x, y = centro en coordenadas del personaje.
+export type MouthStyle = "toon" | "smile" | "monster" | "lips";
+
+export interface Mouth {
+  style: MouthStyle;
+  x: number;
+  y: number;
+  w: number;
+}
+
+export const MOUTH_STYLES: { id: MouthStyle; label: string; emoji: string }[] = [
+  { id: "toon", label: "Caricatura", emoji: "😮" },
+  { id: "smile", label: "Sonrisa", emoji: "😁" },
+  { id: "monster", label: "Monstruo", emoji: "👹" },
+  { id: "lips", label: "Labios", emoji: "💋" },
+];
+
+export const DEFAULT_MOUTH: Mouth = { style: "toon", x: 200, y: 135, w: 64 };
+
+// Voces chistosas: cambiar la velocidad cambia el tono
+export const VOICES = [
+  { id: "normal", label: "Mi voz", emoji: "🙂", rate: 1 },
+  { id: "squirrel", label: "Ardilla", emoji: "🐿️", rate: 1.45 },
+  { id: "monster", label: "Monstruo", emoji: "👹", rate: 0.72 },
+] as const;
+
+export const VOICE_MAX_SECONDS = 15;
+
+export interface SavedCharacter {
+  id: string;
+  name: string;
+  parts: CharacterParts;
+  updatedAt: number;
+  thumb?: string;
+  images?: PartImages;
+  mouth?: Mouth;
+  voice?: Blob; // grabación de su voz (se queda en la tablet)
+}
+
+export function emptyParts(): CharacterParts {
+  return { head: [], body: [], armL: [], armR: [], legL: [], legR: [] };
+}
+
+export const BRUSH_COLORS = [
+  "#111827", "#ffffff", "#ef4444", "#f97316", "#facc15", "#22c55e",
+  "#3b82f6", "#a855f7", "#ec4899", "#92400e", "#fcd5b5", "#14b8a6",
+];
+
+export const BRUSH_SIZES = [
+  { size: 6, label: "Fino" },
+  { size: 14, label: "Medio" },
+  { size: 32, label: "Gordo" },
+];
+
+// ---------- Poses ----------
+// Ángulos en radianes. 0 = como lo dibujó el niño.
+// Brazos/piernas: positivo gira hacia la izquierda de la pantalla.
+export interface Pose {
+  x: number;
+  y: number;
+  rot: number;
+  scaleX: number;
+  squash: number; // 1 = normal
+  body: number;
+  head: number;
+  armL: number;
+  armR: number;
+  legL: number;
+  legR: number;
+}
+
+export const REST_POSE: Pose = {
+  x: 0, y: 0, rot: 0, scaleX: 1, squash: 1,
+  body: 0, head: 0, armL: 0.15, armR: -0.15, legL: 0, legR: 0,
+};
+
+export type MoveId = "idle" | "dance" | "jump" | "walk" | "wave" | "karate" | "spin";
+
+export const MOVES: { id: MoveId; label: string; emoji: string }[] = [
+  { id: "dance", label: "Bailar", emoji: "💃" },
+  { id: "jump", label: "Saltar", emoji: "🦘" },
+  { id: "walk", label: "Caminar", emoji: "🚶" },
+  { id: "wave", label: "Saludar", emoji: "👋" },
+  { id: "karate", label: "Karate", emoji: "🥋" },
+  { id: "spin", label: "Voltereta", emoji: "🤸" },
+  { id: "idle", label: "Quieto", emoji: "🧍" },
+];
+
+export function poseFor(move: MoveId, t: number): Pose {
+  const p: Pose = { ...REST_POSE };
+  switch (move) {
+    case "idle": {
+      p.y = Math.sin(t * 2) * 3;
+      p.armL = 0.15 + Math.sin(t * 2) * 0.05;
+      p.armR = -0.15 - Math.sin(t * 2) * 0.05;
+      p.head = Math.sin(t * 1.3) * 0.05;
+      break;
+    }
+    case "dance": {
+      const b = t * 5;
+      p.y = -Math.abs(Math.sin(b)) * 22;
+      p.body = Math.sin(b) * 0.15;
+      p.head = -Math.sin(b) * 0.25;
+      p.armL = 1.6 + Math.sin(b * 2) * 0.9;
+      p.armR = -1.6 + Math.sin(b * 2) * 0.9;
+      p.legL = Math.max(0, Math.sin(b)) * 0.45;
+      p.legR = -Math.max(0, -Math.sin(b)) * 0.45;
+      break;
+    }
+    case "jump": {
+      const period = 1.3;
+      const ph = (t % period) / period;
+      if (ph < 0.2) {
+        // agacharse
+        const c = Math.sin((ph / 0.2) * Math.PI);
+        p.squash = 1 - c * 0.12;
+        p.armL = 0.15 - c * 0.5;
+        p.armR = -0.15 + c * 0.5;
+      } else if (ph < 0.85) {
+        const air = Math.sin(((ph - 0.2) / 0.65) * Math.PI);
+        p.y = -air * 170;
+        p.armL = 0.15 + air * 2.6;
+        p.armR = -0.15 - air * 2.6;
+        p.legL = air * 0.35;
+        p.legR = -air * 0.35;
+        p.head = -air * 0.1;
+      } else {
+        const c = Math.sin(((ph - 0.85) / 0.15) * Math.PI);
+        p.squash = 1 - c * 0.15;
+      }
+      break;
+    }
+    case "walk": {
+      const s = t * 6;
+      const travel = Math.sin(t * 0.45);
+      p.x = travel * 230;
+      p.scaleX = Math.cos(t * 0.45) >= 0 ? 1 : -1;
+      p.y = -Math.abs(Math.cos(s)) * 8;
+      p.legL = Math.sin(s) * 0.5;
+      p.legR = -Math.sin(s) * 0.5;
+      p.armL = 0.1 - Math.sin(s) * 0.55;
+      p.armR = -0.1 - Math.sin(s) * 0.55;
+      p.head = Math.sin(s * 2) * 0.04;
+      break;
+    }
+    case "wave": {
+      p.armR = -2.7 + Math.sin(t * 9) * 0.45;
+      p.armL = 0.2;
+      p.head = 0.15 + Math.sin(t * 2) * 0.05;
+      p.body = -0.05;
+      p.y = Math.sin(t * 2) * 3;
+      break;
+    }
+    case "karate": {
+      const period = 1.6;
+      const ph = (t % period) / period;
+      const hit = (a: number, b: number) =>
+        ph >= a && ph < b ? Math.sin(((ph - a) / (b - a)) * Math.PI) : 0;
+      const pL = hit(0, 0.25);
+      const pR = hit(0.25, 0.5);
+      const kick = hit(0.55, 0.9);
+      p.armL = 0.6 + pL * 1.0;
+      p.armR = -0.6 - pR * 1.0;
+      p.legR = -kick * 1.4;
+      p.legL = 0.15;
+      p.body = kick * 0.2;
+      p.y = -kick * 10;
+      p.squash = 0.96;
+      break;
+    }
+    case "spin": {
+      const period = 1.6;
+      const ph = (t % period) / period;
+      const air = Math.sin(ph * Math.PI);
+      p.y = -air * 150;
+      p.rot = ph * Math.PI * 2;
+      p.armL = 0.15 + air * 2.2;
+      p.armR = -0.15 - air * 2.2;
+      p.legL = air * 0.3;
+      p.legR = -air * 0.3;
+      break;
+    }
+  }
+  return p;
+}
+
+// ---------- Escenarios ----------
+export type SceneId = "park" | "space" | "beach" | "disco" | "jungle";
+
+export const SCENES: { id: SceneId; label: string; emoji: string }[] = [
+  { id: "park", label: "Parque", emoji: "🌳" },
+  { id: "space", label: "Espacio", emoji: "🪐" },
+  { id: "beach", label: "Playa", emoji: "🏖️" },
+  { id: "disco", label: "Disco", emoji: "🪩" },
+  { id: "jungle", label: "Selva", emoji: "🌴" },
+];

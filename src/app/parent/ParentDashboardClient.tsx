@@ -271,6 +271,24 @@ function GamePreviewPanel() {
             </span>
           </div>
         </a>
+        <a
+          href="/animation-studio?preview=true"
+          className="block bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-violet-400/50 hover:bg-white/10 transition-all group relative overflow-hidden sm:col-span-2"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-9xl">
+            🎬
+          </div>
+          <div className="relative z-10">
+            <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🎬</div>
+            <h3 className="text-2xl font-bold text-white mb-2">Estudio de Animación</h3>
+            <p className="text-gray-400 text-sm mb-4">
+              Dibujan un personaje por partes y lo animan con botones o con la cámara (modo espejo). Los dibujos se quedan en la tablet.
+            </p>
+            <span className="inline-block bg-amber-500/20 text-amber-300 text-xs font-bold px-3 py-1 rounded-full">
+              👀 Modo Preview
+            </span>
+          </div>
+        </a>
       </div>
     </div>
   );

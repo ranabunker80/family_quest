@@ -170,9 +170,24 @@ export default function KidDashboard({ profile, missions, rewards, history }: { 
                                 </Link>
                             </StaggerItem>
 
+                            {/* Animation Studio Card */}
+                            <StaggerItem index={4}>
+                                <Link href="/animation-studio" className="block bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-violet-400/50 hover:bg-white/10 transition-all cursor-pointer group relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-9xl">🎬</div>
+                                    <div className="relative z-10">
+                                        <div className="text-5xl mb-4 group-hover:scale-110 transition-transform">🎬</div>
+                                        <h3 className="text-2xl font-bold text-white mb-2">Estudio de Animación</h3>
+                                        <p className="text-gray-400 text-sm mb-4">Dibuja tu personaje y ponlo a bailar, o haz que copie tus movimientos con la cámara.</p>
+                                        <span className="inline-block bg-violet-500/20 text-violet-300 text-xs font-bold px-3 py-1 rounded-full">
+                                            Nuevo · Crea y graba
+                                        </span>
+                                    </div>
+                                </Link>
+                            </StaggerItem>
+
                             {/* Phrase Challenge Card — Isaac y Elias */}
                             {(profileMatchesKid(profile, "isaac") || profileMatchesKid(profile, "elias")) && (
-                                <StaggerItem index={4}>
+                                <StaggerItem index={5}>
                                     <Link href="/phrase-challenge" className="block bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 hover:border-pink-400/50 hover:bg-white/10 transition-all cursor-pointer group relative overflow-hidden">
                                         <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-9xl">🌈</div>
                                         <div className="relative z-10">
