@@ -249,3 +249,33 @@ export const SCENES: { id: SceneId; label: string; emoji: string }[] = [
   { id: "disco", label: "Disco", emoji: "🪩" },
   { id: "jungle", label: "Selva", emoji: "🌴" },
 ];
+
+// ---------- Fondos propios e historias ----------
+export interface CustomBackground {
+  id: string;
+  src: string; // JPEG data URL 960×600
+}
+
+// Un turno de la historia: quién habla, qué hace y su voz
+export interface StoryLine {
+  id: string;
+  charId: string;
+  move: MoveId;
+  rate: number;
+  voice?: Blob;
+}
+
+export interface Story {
+  id: string;
+  title: string;
+  scene: string; // id de escenario o "bg:<id>"
+  cast: string[]; // ids de personajes, en orden de izquierda a derecha
+  flips: boolean[]; // voltear a cada personaje
+  lines: StoryLine[];
+  updatedAt: number;
+}
+
+export const MAX_CAST = 3;
+export const MAX_BACKGROUNDS = 12;
+export const MAX_STORIES = 12;
+export const SILENT_LINE_SECONDS = 2.5;
