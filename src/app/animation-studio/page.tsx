@@ -2,11 +2,13 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import AnimationStudioEngine from "@/components/game/AnimationStudioEngine";
+import MissionGate from "@/components/game/MissionGate";
+import { activeMission, kidFromProfile } from "@/lib/missions";
 
 export default async function AnimationStudioPage({
   searchParams,
 }: {
-  searchParams: Promise<{ preview?: string }>;
+  searchParams: Promise<{ preview?: string; kid?: string }>;
 }) {
   const params = await searchParams;
   const supabase = await createClient();
@@ -26,6 +28,9 @@ export default async function AnimationStudioPage({
     .single();
 
   const isPreview = params.preview === "true" && profile?.role === "parent";
+  // Misión del día (frase de la escuela). En preview se ve la de Isaac o ?kid=elias
+  const missionKid = isPreview ? (params.kid === "elias" ? "elias" : "isaac") : kidFromProfile(profile);
+  const mission = activeMission(missionKid, "animation-studio");
 
   // Parents blocked unless preview mode
   if (profile?.role === "parent" && !isPreview) {
@@ -71,10 +76,12 @@ export default async function AnimationStudioPage({
         </header>
 
         <div className="flex-1 min-h-0">
-          <AnimationStudioEngine
-            storageKey={`fq-animation-studio:${isPreview ? "parent-preview" : user.id}`}
-            previewMode={isPreview}
-          />
+          <MissionGate mission={mission} previewMode={isPreview} gameName="el Estudio de Animación">
+            <AnimationStudioEngine
+              storageKey={`fq-animation-studio:${isPreview ? "parent-preview" : user.id}`}
+              previewMode={isPreview}
+            />
+          </MissionGate>
         </div>
       </div>
     </div>
