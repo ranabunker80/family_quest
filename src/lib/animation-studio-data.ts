@@ -364,6 +364,7 @@ export interface StoryLine {
   voice?: Blob;
   effects?: StoryEffect[];
   speed?: number; // velocidad del movimiento en este turno
+  music?: string; // desde este turno: id de MUSIC o "none"; sin valor = sigue la de antes
 }
 
 export interface Story {

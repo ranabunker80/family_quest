@@ -24,6 +24,7 @@ import {
   type StoryEffect,
   type StoryLine,
 } from "@/lib/animation-studio-data";
+import { MUSIC, MUSIC_VOLUMES, MusicPlayer, musicInfo } from "@/lib/animation-studio-music";
 import {
   DEFAULT_EFFECT_SIZE,
   EFFECTS,
@@ -235,6 +236,7 @@ interface Kit {
   ctx: AudioContext;
   analyser: AnalyserNode;
   dest: MediaStreamAudioDestinationNode;
+  music: MusicPlayer;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -266,6 +268,7 @@ export default function StoryStudio({
   const [notice, setNotice] = useState<string | null>(null);
   const [, setReady] = useState(0);
   const [fxLineId, setFxLineId] = useState<string | null>(null);
+  const [musicVol, setMusicVol] = useState<number>(MUSIC_VOLUMES[1].level);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const storyRef = useRef(story);
@@ -332,7 +335,9 @@ export default function StoryStudio({
       const dest = ctx.createMediaStreamDestination();
       analyser.connect(ctx.destination);
       analyser.connect(dest);
-      kitRef.current = { ctx, analyser, dest };
+      // música: bocina y película, pero no mueve bocas
+      kitRef.current = { ctx, analyser, dest, music: new MusicPlayer(ctx, [ctx.destination, dest]) };
+      kitRef.current.music.setVolume(musicVol);
     }
     if (kitRef.current.ctx.state === "suspended") kitRef.current.ctx.resume();
     return kitRef.current;
@@ -365,6 +370,9 @@ export default function StoryStudio({
     src.buffer = buf;
     src.playbackRate.value = line.rate;
     src.connect(k.analyser);
+    src.onended = () => {
+      if (sourceRef.current === src) sourceRef.current = null;
+    };
     sourceRef.current = src;
     src.start();
     return buf.duration / line.rate;
@@ -373,6 +381,7 @@ export default function StoryStudio({
   const stopPlaying = () => {
     playingRef.current = false;
     stopSound();
+    kitRef.current?.music.stop();
     setPlaying(false);
     setPlayIndex(null);
   };
@@ -388,10 +397,17 @@ export default function StoryStudio({
     playingRef.current = true;
     setPlaying(true);
     lineStartsRef.current = new Map();
+    // la música que venía sonando antes del primer turno que se reproduce
+    const all = storyRef.current.lines;
+    let tune: string | undefined;
+    for (let j = 0; j <= Math.min(from, all.length - 1); j++) if (all[j].music !== undefined) tune = all[j].music;
+    const music = kit().music;
+    music.play(tune && tune !== "none" ? tune : null);
     for (const line of lines) {
       if (!playingRef.current) break;
       const idx = storyRef.current.lines.findIndex((l) => l.id === line.id);
       lineStartsRef.current.set(idx, performance.now());
+      if (line.music !== undefined) music.play(line.music === "none" ? null : line.music);
       playIndexRef.current = idx;
       setPlayIndex(idx);
       const secs = await playLineVoice(line);
@@ -518,6 +534,7 @@ export default function StoryStudio({
       const editing = !playingRef.current && fxLineRef.current ? s.lines.find((l) => l.id === fxLineRef.current) ?? null : null;
       const line = playingRef.current && idx !== null ? s.lines[idx] : editing;
       const micLine = micRef.current ? s.lines.find((l) => l.id === micRef.current!.lineId) : null;
+      kitRef.current?.music.duck(!!sourceRef.current || !!micRef.current);
       const lineT =
         playingRef.current && idx !== null ? (performance.now() - (lineStartsRef.current.get(idx) ?? start)) / 1000 : t;
       drawScene(ctx, s.scene, t, bgImages);
@@ -785,6 +802,9 @@ export default function StoryStudio({
                   title="Efectos"
                 >
                   ✨
+                  {line.music !== undefined && (
+                    <span className="absolute -bottom-1 -left-1 text-sm">{line.music === "none" ? "🔇" : musicInfo(line.music)?.emoji}</span>
+                  )}
                   {!!line.effects?.length && (
                     <span className="absolute -top-1 -right-1 bg-orange-400 text-slate-900 text-xs rounded-full w-5 h-5 flex items-center justify-center">
                       {line.effects.length}
@@ -855,7 +875,32 @@ export default function StoryStudio({
       <div className="md:w-64 shrink-0 flex flex-col gap-3 md:overflow-y-auto">
         {fxLine && (
           <div className="bg-orange-400/10 border-2 border-orange-400/50 rounded-2xl p-2 flex flex-col gap-2 shrink-0">
-            <div className="text-orange-100 font-bold px-1">✨ Efectos del turno {fxLineIndex + 1}</div>
+            <div className="text-orange-100 font-bold px-1">✨ Efectos y música del turno {fxLineIndex + 1}</div>
+            <div className="bg-sky-400/10 rounded-xl p-1.5 flex flex-col gap-1.5">
+              <div className="text-sky-100 text-xs font-bold px-1">🎵 Música desde este turno</div>
+              <div className="grid grid-cols-5 gap-1.5">
+                {[
+                  { id: undefined, emoji: "↪️", label: "Sigue" },
+                  ...MUSIC.map((m) => ({ id: m.id as string | undefined, emoji: m.emoji, label: m.label })),
+                  { id: "none", emoji: "🔇", label: "Nada" },
+                ].map((m) => (
+                  <button
+                    key={m.id ?? "sigue"}
+                    onClick={() => {
+                      editLine(fxLine.id, (l) => ({ ...l, music: m.id }));
+                      const player = kit().music;
+                      player.play(m.id && m.id !== "none" ? m.id : null);
+                    }}
+                    className={`min-h-[48px] rounded-xl flex flex-col items-center justify-center active:scale-95 ${
+                      fxLine.music === m.id ? "bg-sky-400 text-slate-900" : "bg-white/10 text-white"
+                    }`}
+                  >
+                    <span className="text-lg leading-none">{m.emoji}</span>
+                    <span className="text-[9px] leading-tight">{m.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <p className="text-xs text-orange-100/80 px-1">Toca uno para ponerlo y arrástralo en el escenario.</p>
             <EffectButtons onPick={addLineFx} gifs={gifs} gifAnims={gifAnims} onAddGif={onAddGif} onRemoveGif={onRemoveGif} />
             {(fxLine.effects ?? []).map((fx) => {
@@ -906,7 +951,13 @@ export default function StoryStudio({
               <button disabled={busy} onClick={() => play(fxLineIndex, fxLineIndex + 1)} className={`${btn} bg-white/10 text-white disabled:opacity-40`}>
                 ▶️ Ver
               </button>
-              <button onClick={() => setFxLineId(null)} className={`${btn} bg-orange-400 text-slate-900`}>
+              <button
+                onClick={() => {
+                  kitRef.current?.music.stop();
+                  setFxLineId(null);
+                }}
+                className={`${btn} bg-orange-400 text-slate-900`}
+              >
                 ✅ Listo
               </button>
             </div>
@@ -965,6 +1016,17 @@ export default function StoryStudio({
             onRemove={onRemoveBackground}
           />
         </div>
+        <button
+          onClick={() => {
+            const i = MUSIC_VOLUMES.findIndex((v) => v.level === musicVol);
+            const next = MUSIC_VOLUMES[(i + 1) % MUSIC_VOLUMES.length].level;
+            setMusicVol(next);
+            kitRef.current?.music.setVolume(next);
+          }}
+          className={`${btn} shrink-0 bg-sky-400/15 text-sky-100`}
+        >
+          {MUSIC_VOLUMES.find((v) => v.level === musicVol)?.emoji} Música: {MUSIC_VOLUMES.find((v) => v.level === musicVol)?.label}
+        </button>
         {playing && !filming ? (
           <button onClick={stopPlaying} className={`${btn} shrink-0 bg-white/20 text-white text-lg`}>
             ⏹ Parar

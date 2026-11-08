@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import StoryStudio, { SceneButtons, EffectButtons } from "@/components/game/StoryStudio";
 import MoveRecorder from "@/components/game/MoveRecorder";
+import { MUSIC, MUSIC_VOLUMES, MusicPlayer } from "@/lib/animation-studio-music";
 import { DEFAULT_EFFECT_SIZE, decodeGif, drawEffect, effectDone, effectInfo, type GifAnim } from "@/lib/animation-studio-effects";
 import {
   CHAR_W,
@@ -178,6 +179,8 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   const [canUndo, setCanUndo] = useState(false);
   const [move, setMove] = useState<string>("dance");
   const [speed, setSpeed] = useState(1);
+  const [music, setMusic] = useState<string | null>(null);
+  const [musicVol, setMusicVol] = useState<number>(MUSIC_VOLUMES[1].level);
   const [customMoves, setCustomMoves] = useState<CustomMove[]>([]);
   const [recorderOpen, setRecorderOpen] = useState(false);
   const [deleteMoveAsk, setDeleteMoveAsk] = useState(false);
@@ -218,7 +221,12 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   const fxDragRef = useRef<{ id: number; fx: string; dx: number; dy: number } | null>(null);
   const voiceRef = useRef<Blob | null>(null);
   const voiceBufferRef = useRef<AudioBuffer | null>(null);
-  const audioRef = useRef<{ ctx: AudioContext; analyser: AnalyserNode; dest: MediaStreamAudioDestinationNode } | null>(null);
+  const audioRef = useRef<{
+    ctx: AudioContext;
+    analyser: AnalyserNode;
+    dest: MediaStreamAudioDestinationNode;
+    music: MusicPlayer;
+  } | null>(null);
   const micRef = useRef<{ stream: MediaStream; analyser: AnalyserNode; rec: MediaRecorder } | null>(null);
   const playingRef = useRef<AudioBufferSourceNode | null>(null);
   const mouthDragRef = useRef<{ id: number; start: [number, number]; m: Mouth } | null>(null);
@@ -1018,6 +1026,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
       ctx.ellipse(STAGE_W / 2 + current.x, GROUND_Y + 4, shadowW, 12, 0, 0, Math.PI * 2);
       ctx.fill();
       const an = micRef.current?.analyser ?? (playingRef.current ? audioRef.current?.analyser : null);
+      audioRef.current?.music.duck(!!micRef.current || !!playingRef.current);
       const level = an ? loudness(an, levelBuf) : 0;
       mouthOpen += (level - mouthOpen) * (level > mouthOpen ? 0.6 : 0.25);
       drawCharacter(
@@ -1063,7 +1072,8 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
       const dest = ctx.createMediaStreamDestination();
       analyser.connect(ctx.destination);
       analyser.connect(dest);
-      audioRef.current = { ctx, analyser, dest };
+      // la música va a la bocina y al video, pero no al analizador (no mueve la boca)
+      audioRef.current = { ctx, analyser, dest, music: new MusicPlayer(ctx, [ctx.destination, dest]) };
     }
     if (audioRef.current.ctx.state === "suspended") audioRef.current.ctx.resume();
     return audioRef.current;
@@ -1172,12 +1182,13 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
       return;
     }
     const withVoice = !!voiceRef.current;
-    const types = withVoice
+    const withAudio = withVoice || !!music;
+    const types = withAudio
       ? ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"]
       : ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4"];
     const mime = types.find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
     const stream = canvas.captureStream(30);
-    if (withVoice) stream.addTrack(ensureAudio().dest.stream.getAudioTracks()[0]);
+    if (withAudio) stream.addTrack(ensureAudio().dest.stream.getAudioTracks()[0]);
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
     const chunks: Blob[] = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
@@ -1224,6 +1235,8 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     stopTalking();
     setMirror(false);
     setStageFx([]);
+    setMusic(null);
+    audioRef.current?.music.stop();
   }, [phase]);
 
   useEffect(() => () => {
@@ -1772,6 +1785,41 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
           onAdd={addBackground}
           onRemove={removeBackground}
         />
+        <div className="bg-sky-400/10 border border-sky-400/30 rounded-2xl p-2 flex flex-col gap-2">
+          <div className="text-sky-100 font-bold text-sm px-1">🎵 Música</div>
+          <div className="grid grid-cols-3 gap-2">
+            {MUSIC.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => {
+                  const next = music === m.id ? null : m.id;
+                  setMusic(next);
+                  const a = ensureAudio();
+                  a.music.setVolume(musicVol);
+                  a.music.play(next);
+                }}
+                className={`${btn} flex flex-col items-center justify-center py-1 ${music === m.id ? "bg-sky-400 text-slate-900" : "bg-white/10 text-white"}`}
+              >
+                <span className="text-xl">{m.emoji}</span>
+                <span className="text-[10px] leading-tight">{m.label}</span>
+              </button>
+            ))}
+            <button
+              onClick={() => {
+                const i = MUSIC_VOLUMES.findIndex((v) => v.level === musicVol);
+                const next = MUSIC_VOLUMES[(i + 1) % MUSIC_VOLUMES.length].level;
+                setMusicVol(next);
+                audioRef.current?.music.setVolume(next);
+              }}
+              className={`${btn} flex flex-col items-center justify-center py-1 bg-white/10 text-white`}
+              aria-label="Volumen de la música"
+            >
+              <span className="text-xl">{MUSIC_VOLUMES.find((v) => v.level === musicVol)?.emoji}</span>
+              <span className="text-[10px] leading-tight">{MUSIC_VOLUMES.find((v) => v.level === musicVol)?.label}</span>
+            </button>
+          </div>
+          {music && <p className="text-[11px] text-sky-100/80 text-center">Toca otra vez el tema para quitarlo. Se oye bajito cuando hablan.</p>}
+        </div>
         <div className="bg-rose-400/10 border border-rose-400/30 rounded-2xl p-2 flex flex-col gap-2">
           {voiceLeft !== null ? (
             <button onClick={stopVoiceRecording} className={`${btn} bg-rose-600 text-white animate-pulse`}>
