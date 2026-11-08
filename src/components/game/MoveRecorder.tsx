@@ -7,6 +7,7 @@ import {
   MOVE_MAX_SECONDS,
   KEYFRAME_SECONDS,
   CUSTOM_MOVE_EMOJIS,
+  SPEEDS,
   customPoseAt,
   poseToFrame,
   type CustomMove,
@@ -73,6 +74,9 @@ export default function MoveRecorder({ caches, mouth, joints, scene, bgImages, o
   const [seconds, setSeconds] = useState(0);
   const [name, setName] = useState("");
   const [icon, setIcon] = useState(CUSTOM_MOVE_EMOJIS[0]);
+  const [speed, setSpeed] = useState(1);
+  const speedRef = useRef(speed);
+  speedRef.current = speed;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const poseRef = useRef<Pose>({ ...REST_POSE });
@@ -141,7 +145,10 @@ export default function MoveRecorder({ caches, mouth, joints, scene, bgImages, o
       drawScene(ctx, scene, t, bgImages);
       const play = playRef.current;
       if (play !== null) {
-        const target = customPoseAt({ id: "", name: "", emoji: "", frames: framesRef.current }, (now - play) / 1000);
+        const target = customPoseAt(
+          { id: "", name: "", emoji: "", frames: framesRef.current },
+          ((now - play) / 1000) * speedRef.current
+        );
         shown = blendPose(shown, target, 0.6);
       } else {
         shown = poseRef.current;
@@ -267,6 +274,7 @@ export default function MoveRecorder({ caches, mouth, joints, scene, bgImages, o
       name: name.trim().slice(0, 18) || "Mi movimiento",
       emoji: icon,
       frames: framesRef.current.map((f) => f.map((v) => Math.round(v * 1000) / 1000)),
+      speed: speed === 1 ? undefined : speed,
     });
   };
 
@@ -336,6 +344,18 @@ export default function MoveRecorder({ caches, mouth, joints, scene, bgImages, o
           >
             ↩️ Quitar el último
           </button>
+        </div>
+        <div className="grid grid-cols-4 gap-2">
+          {SPEEDS.map((sp) => (
+            <button
+              key={sp.rate}
+              onClick={() => setSpeed(sp.rate)}
+              className={`${btn} flex flex-col items-center justify-center py-1 ${speed === sp.rate ? "bg-sky-400 text-slate-900" : "bg-white/10 text-white"}`}
+            >
+              <span className="text-xl">{sp.emoji}</span>
+              <span className="text-[10px] leading-tight">{sp.label}</span>
+            </button>
+          ))}
         </div>
         <input
           value={name}

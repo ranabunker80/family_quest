@@ -252,6 +252,7 @@ export interface CustomMove {
   name: string;
   emoji: string;
   frames: number[][];
+  speed?: number; // velocidad fija que le dejó el niño (1 = como lo grabó)
 }
 
 export const MAX_CUSTOM_MOVES = 20;
@@ -260,6 +261,16 @@ export const KEYFRAME_SECONDS = 0.5; // un fotograma tarda esto en llegar desde 
 export const CUSTOM_MOVE_EMOJIS = ["⭐", "🕺", "🤖", "🦖", "🥷", "🐒", "🦸", "🧟"];
 
 export const customMoveId = (id: string) => `my:${id}`;
+
+// Velocidad de la animación: multiplica el tiempo del movimiento
+export const SPEEDS = [
+  { rate: 0.5, label: "Lento", emoji: "🐢" },
+  { rate: 1, label: "Normal", emoji: "🚶" },
+  { rate: 1.7, label: "Rápido", emoji: "⚡" },
+  { rate: 2.6, label: "Muy rápido", emoji: "🚀" },
+] as const;
+
+export const speedInfo = (rate = 1) => SPEEDS.find((s) => s.rate === rate) ?? SPEEDS[1];
 
 export function poseToFrame(t: number, p: Pose): number[] {
   return [t, ...POSE_KEYS.map((k) => p[k])];
@@ -295,7 +306,7 @@ export function customPoseAt(m: CustomMove, t: number): Pose {
 export function movePose(move: string, t: number, custom: CustomMove[]): Pose {
   if (move.startsWith("my:")) {
     const m = custom.find((c) => customMoveId(c.id) === move);
-    return m ? customPoseAt(m, t) : poseFor("idle", t);
+    return m ? customPoseAt(m, t * (m.speed ?? 1)) : poseFor("idle", t);
   }
   return poseFor(move as MoveId, t);
 }
@@ -352,6 +363,7 @@ export interface StoryLine {
   rate: number;
   voice?: Blob;
   effects?: StoryEffect[];
+  speed?: number; // velocidad del movimiento en este turno
 }
 
 export interface Story {

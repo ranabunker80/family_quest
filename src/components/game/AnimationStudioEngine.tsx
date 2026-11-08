@@ -17,6 +17,7 @@ import {
   poseFor,
   movePose,
   customMoveId,
+  SPEEDS,
   MAX_CUSTOM_MOVES,
   MAX_GIFS,
   GIF_MAX_BYTES,
@@ -176,6 +177,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   const [erasing, setErasing] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [move, setMove] = useState<string>("dance");
+  const [speed, setSpeed] = useState(1);
   const [customMoves, setCustomMoves] = useState<CustomMove[]>([]);
   const [recorderOpen, setRecorderOpen] = useState(false);
   const [deleteMoveAsk, setDeleteMoveAsk] = useState(false);
@@ -234,12 +236,14 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   const mirrorStateRef = useRef<MirrorState>({ baseline: null });
   const recorderRef = useRef<MediaRecorder | null>(null);
   const moveRef = useRef(move);
+  const speedRef = useRef(speed);
   const bgImagesRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const sceneRef = useRef(scene);
   const mirrorRef = useRef(mirror);
   const nameRef = useRef(name);
 
   moveRef.current = move;
+  speedRef.current = speed;
   customMovesRef.current = customMoves;
   gifAnimsRef.current = gifAnims;
   stageFxRef.current = stageFx;
@@ -967,9 +971,15 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     let frame = 0;
     let mouthOpen = 0;
     const levelBuf = new Float32Array(1024);
+    // tiempo del movimiento: avanza más rápido o más lento según la velocidad, sin brincos al cambiarla
+    let moveT = 0;
+    let last = start;
 
     const loop = () => {
-      const t = (performance.now() - start) / 1000;
+      const now0 = performance.now();
+      const t = (now0 - start) / 1000;
+      moveT += ((now0 - last) / 1000) * speedRef.current;
+      last = now0;
       let target: Pose;
       if (mirrorRef.current) {
         const video = videoRef.current;
@@ -995,7 +1005,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
       } else {
         seen = false;
         mirrorTarget = null;
-        target = movePose(moveRef.current, t, customMovesRef.current);
+        target = movePose(moveRef.current, moveT, customMovesRef.current);
         current = blendPose(current, target, 0.5);
       }
 
@@ -1701,6 +1711,18 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
             >
               <span className="text-2xl">{m.emoji}</span>
               <span className="text-xs truncate max-w-full px-1">{m.name}</span>
+            </button>
+          ))}
+        </div>
+        <div className={`grid grid-cols-4 gap-2 ${mirror ? "opacity-30 pointer-events-none" : ""}`}>
+          {SPEEDS.map((sp) => (
+            <button
+              key={sp.rate}
+              onClick={() => setSpeed(sp.rate)}
+              className={`${btn} flex flex-col items-center justify-center py-1 ${speed === sp.rate ? "bg-sky-400 text-slate-900" : "bg-white/10 text-white"}`}
+            >
+              <span className="text-xl">{sp.emoji}</span>
+              <span className="text-[10px] leading-tight">{sp.label}</span>
             </button>
           ))}
         </div>

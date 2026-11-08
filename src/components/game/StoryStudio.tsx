@@ -13,6 +13,8 @@ import {
   customMoveId,
   moveInfo,
   movePose,
+  SPEEDS,
+  speedInfo,
   type CustomBackground,
   type CustomGif,
   type CustomMove,
@@ -528,7 +530,7 @@ export default function StoryStudio({
         const speaking = line?.charId === id;
         const move = speaking ? line!.move : "idle";
         // el que habla empieza su movimiento desde el principio del turno
-        const target = movePose(move, speaking ? lineT : t + i * 0.7, customMovesRef.current);
+        const target = movePose(move, speaking ? lineT * (line!.speed ?? 1) : t + i * 0.7, customMovesRef.current);
         target.x *= k;
         target.y *= k;
         if (s.flips[i]) target.scaleX *= -1;
@@ -764,6 +766,15 @@ export default function StoryStudio({
                 >
                   <span className="text-xl">{mv.emoji}</span>
                   <span className="text-[10px] truncate max-w-full px-1">{mv.label}</span>
+                </button>
+                <button
+                  disabled={busy}
+                  onClick={() => editLine(line.id, (l) => ({ ...l, speed: cycle(SPEEDS.map((sp) => sp.rate as number), l.speed ?? 1) }))}
+                  className={`${btn} w-12 flex flex-col items-center justify-center bg-white/10 text-white`}
+                  title="Velocidad"
+                >
+                  <span className="text-xl">{speedInfo(line.speed).emoji}</span>
+                  <span className="text-[9px] leading-tight">{speedInfo(line.speed).label}</span>
                 </button>
                 <button
                   disabled={busy}
