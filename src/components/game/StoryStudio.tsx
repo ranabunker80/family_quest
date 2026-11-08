@@ -9,14 +9,27 @@ import {
   VOICE_MAX_SECONDS,
   MAX_CAST,
   SILENT_LINE_SECONDS,
-  poseFor,
+  EFFECT_TURNS,
+  customMoveId,
+  moveInfo,
+  movePose,
   type CustomBackground,
-  type MoveId,
+  type CustomGif,
+  type CustomMove,
   type Pose,
   type SavedCharacter,
   type Story,
+  type StoryEffect,
   type StoryLine,
 } from "@/lib/animation-studio-data";
+import {
+  DEFAULT_EFFECT_SIZE,
+  EFFECTS,
+  drawEffect,
+  effectDone,
+  effectInfo,
+  type GifAnim,
+} from "@/lib/animation-studio-effects";
 import {
   STAGE_W,
   STAGE_H,
@@ -115,12 +128,101 @@ export function SceneButtons({
   );
 }
 
+// ---------- Botones de efectos (prehechos + GIFs propios) ----------
+export function EffectButtons({
+  onPick,
+  gifs,
+  gifAnims,
+  onAddGif,
+  onRemoveGif,
+}: {
+  onPick: (kind: string) => void;
+  gifs: CustomGif[];
+  gifAnims: Map<string, GifAnim>;
+  onAddGif: (file: File) => Promise<string | null>;
+  onRemoveGif: (id: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-5 gap-2">
+        {EFFECTS.map((e) => (
+          <button
+            key={e.id}
+            aria-label={e.label}
+            title={e.label}
+            disabled={removing}
+            onClick={() => onPick(e.id)}
+            className={`${btn} text-2xl bg-white/10 disabled:opacity-30`}
+          >
+            {e.emoji}
+          </button>
+        ))}
+        {gifs.map((g) => {
+          const anim = gifAnims.get(g.id);
+          return (
+            <button
+              key={g.id}
+              aria-label={removing ? "Borrar mi GIF" : "Mi GIF"}
+              onClick={() => (removing ? onRemoveGif(g.id) : onPick(`gif:${g.id}`))}
+              className={`min-h-[56px] rounded-2xl overflow-hidden border-2 transition-all active:scale-95 flex items-center justify-center bg-white/10 ${
+                removing ? "border-red-400" : "border-transparent"
+              }`}
+              style={anim ? { backgroundImage: `url(${anim.thumb})`, backgroundSize: "contain", backgroundRepeat: "no-repeat", backgroundPosition: "center" } : undefined}
+            >
+              {removing ? <span className="text-xl drop-shadow">✖️</span> : !anim && "⏳"}
+            </button>
+          );
+        })}
+        <button
+          aria-label="Poner mi GIF"
+          disabled={busy || removing}
+          onClick={() => inputRef.current?.click()}
+          className={`${btn} bg-amber-400 text-slate-900 text-xs leading-tight disabled:opacity-40`}
+        >
+          {busy ? "⏳" : <>📷<br />GIF</>}
+        </button>
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/gif,image/webp,image/png,image/*"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (!file) return;
+          setBusy(true);
+          const id = await onAddGif(file);
+          setBusy(false);
+          if (id) onPick(`gif:${id}`);
+        }}
+      />
+      {gifs.length > 0 && (
+        <button
+          onClick={() => setRemoving((v) => !v)}
+          className={`${btn} min-h-[44px] text-sm ${removing ? "bg-red-500 text-white" : "bg-white/5 text-white/70"}`}
+        >
+          {removing ? "✅ Listo" : "🗑️ Borrar mis GIF"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ---------- Historias ----------
 interface Props {
   story: Story;
   characters: SavedCharacter[];
   backgrounds: CustomBackground[];
   bgImages: Map<string, HTMLImageElement>;
+  customMoves: CustomMove[];
+  gifs: CustomGif[];
+  gifAnims: Map<string, GifAnim>;
+  onAddGif: (file: File) => Promise<string | null>;
+  onRemoveGif: (id: string) => void;
   onSave: (story: Story) => void;
   onAddBackground: (file: File) => Promise<string | null>;
   onRemoveBackground: (id: string) => void;
@@ -140,6 +242,11 @@ export default function StoryStudio({
   characters,
   backgrounds,
   bgImages,
+  customMoves,
+  gifs,
+  gifAnims,
+  onAddGif,
+  onRemoveGif,
   onSave,
   onAddBackground,
   onRemoveBackground,
@@ -156,6 +263,7 @@ export default function StoryStudio({
   const [videoExt, setVideoExt] = useState("webm");
   const [notice, setNotice] = useState<string | null>(null);
   const [, setReady] = useState(0);
+  const [fxLineId, setFxLineId] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const storyRef = useRef(story);
@@ -167,9 +275,17 @@ export default function StoryStudio({
   const playingRef = useRef(false);
   const playIndexRef = useRef<number | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const lineStartsRef = useRef<Map<number, number>>(new Map());
+  const fxLineRef = useRef<string | null>(null);
+  const fxDragRef = useRef<{ id: number; fx: string; dx: number; dy: number; x: number; y: number } | null>(null);
+  const customMovesRef = useRef(customMoves);
+  const gifAnimsRef = useRef(gifAnims);
 
   storyRef.current = story;
   playIndexRef.current = playIndex;
+  fxLineRef.current = fxLineId;
+  customMovesRef.current = customMoves;
+  gifAnimsRef.current = gifAnims;
 
   const charById = useCallback((id: string) => characters.find((c) => c.id === id), [characters]);
 
@@ -269,9 +385,13 @@ export default function StoryStudio({
     stopSound();
     playingRef.current = true;
     setPlaying(true);
+    lineStartsRef.current = new Map();
     for (const line of lines) {
       if (!playingRef.current) break;
-      setPlayIndex(storyRef.current.lines.findIndex((l) => l.id === line.id));
+      const idx = storyRef.current.lines.findIndex((l) => l.id === line.id);
+      lineStartsRef.current.set(idx, performance.now());
+      playIndexRef.current = idx;
+      setPlayIndex(idx);
       const secs = await playLineVoice(line);
       const until = performance.now() + secs * 1000 + 400;
       while (playingRef.current && performance.now() < until) await sleep(80);
@@ -393,8 +513,11 @@ export default function StoryStudio({
       const t = (performance.now() - start) / 1000;
       const s = storyRef.current;
       const idx = playIndexRef.current;
-      const line = playingRef.current && idx !== null ? s.lines[idx] : null;
+      const editing = !playingRef.current && fxLineRef.current ? s.lines.find((l) => l.id === fxLineRef.current) ?? null : null;
+      const line = playingRef.current && idx !== null ? s.lines[idx] : editing;
       const micLine = micRef.current ? s.lines.find((l) => l.id === micRef.current!.lineId) : null;
+      const lineT =
+        playingRef.current && idx !== null ? (performance.now() - (lineStartsRef.current.get(idx) ?? start)) / 1000 : t;
       drawScene(ctx, s.scene, t, bgImages);
       const { xs, scale } = castLayout(s.cast.length);
       const k = scale / CHAR_SCALE;
@@ -403,8 +526,9 @@ export default function StoryStudio({
         const rt = runtimesRef.current.get(id);
         if (!rt) return;
         const speaking = line?.charId === id;
-        const move: MoveId = speaking ? line!.move : "idle";
-        const target = poseFor(move, t + i * 0.7);
+        const move = speaking ? line!.move : "idle";
+        // el que habla empieza su movimiento desde el principio del turno
+        const target = movePose(move, speaking ? lineT : t + i * 0.7, customMovesRef.current);
         target.x *= k;
         target.y *= k;
         if (s.flips[i]) target.scaleX *= -1;
@@ -421,8 +545,41 @@ export default function StoryStudio({
         ctx.beginPath();
         ctx.ellipse(xs[i] + pose.x, GROUND_Y + 4, 70 * k * Math.max(0.4, 1 + pose.y / 300), 12 * k, 0, 0, Math.PI * 2);
         ctx.fill();
-        drawCharacter(ctx, rt.caches, pose, xs[i], hipY, scale, rt.mouth, open);
+        drawCharacter(ctx, rt.caches, pose, xs[i], hipY, scale, rt.mouth, open, rt.joints);
       });
+      // efectos: los de este turno y los que siguen de turnos anteriores
+      const now = performance.now();
+      const drag = fxDragRef.current;
+      const fxAt = (fx: StoryEffect, age: number) => {
+        const x = drag?.fx === fx.id ? drag.x : fx.x;
+        const y = drag?.fx === fx.id ? drag.y : fx.y;
+        drawEffect(ctx, fx.kind, x, y, fx.size, age, gifAnimsRef.current);
+        return [x, y];
+      };
+      if (playingRef.current && idx !== null) {
+        const starts = lineStartsRef.current;
+        s.lines.forEach((l, j) => {
+          if (j > idx || !l.effects?.length) return;
+          l.effects.forEach((fx) => {
+            if (fx.turns !== 0 && idx - j >= fx.turns) return;
+            const age = (now - (starts.get(j) ?? starts.get(idx) ?? now)) / 1000;
+            if (!effectDone(fx.kind, age)) fxAt(fx, age);
+          });
+        });
+      } else if (editing?.effects) {
+        // vista previa del turno que se está editando (los de una vez se repiten)
+        editing.effects.forEach((fx) => {
+          const [x, y] = fxAt(fx, ((now - start) / 1000) % 2.2);
+          ctx.save();
+          ctx.setLineDash([10, 8]);
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = "rgba(255,255,255,0.8)";
+          ctx.beginPath();
+          ctx.arc(x, y, fx.size * 0.55, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        });
+      }
       // título y quién habla
       ctx.textBaseline = "top";
       ctx.textAlign = "left";
@@ -489,6 +646,59 @@ export default function StoryStudio({
 
   const cycle = <T,>(list: readonly T[], cur: T) => list[(list.indexOf(cur) + 1) % list.length];
 
+  const moveIds = [...MOVES.map((m) => m.id as string), ...customMoves.map((m) => customMoveId(m.id))];
+
+  // ---------- Efectos por turno ----------
+  const editFx = (lineId: string, fn: (list: StoryEffect[]) => StoryEffect[]) =>
+    editLine(lineId, (l) => ({ ...l, effects: fn(l.effects ?? []) }));
+
+  const addLineFx = (kind: string) => {
+    const s = storyRef.current;
+    const line = s.lines.find((l) => l.id === fxLineId);
+    if (!line) return;
+    const { xs, scale } = castLayout(s.cast.length);
+    const ci = Math.max(0, s.cast.indexOf(line.charId));
+    const k = scale / CHAR_SCALE;
+    const fx: StoryEffect = {
+      id: `${Date.now()}`,
+      kind,
+      // uno al lado del otro si ya hay efectos en el turno
+      x: Math.min(STAGE_W - 80, (xs[ci] ?? STAGE_W / 2) + 120 * k + (line.effects?.length ?? 0) * 60),
+      y: GROUND_Y - 280 * k - (line.effects?.length ?? 0) * 30,
+      size: Math.round(DEFAULT_EFFECT_SIZE * Math.max(0.7, k)),
+      turns: 1,
+    };
+    editFx(line.id, (list) => [...list, fx]);
+  };
+
+  const onCanvasPointer = (e: React.PointerEvent<HTMLCanvasElement>, kind: "down" | "move" | "up") => {
+    const lineId = fxLineRef.current;
+    if (!lineId || playingRef.current) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width) * STAGE_W;
+    const y = ((e.clientY - r.top) / r.height) * STAGE_H;
+    if (kind === "down") {
+      const list = storyRef.current.lines.find((l) => l.id === lineId)?.effects ?? [];
+      const hit = [...list].reverse().find((f) => Math.hypot(f.x - x, f.y - y) < f.size * 0.6);
+      if (!hit) return;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      fxDragRef.current = { id: e.pointerId, fx: hit.id, dx: hit.x - x, dy: hit.y - y, x: hit.x, y: hit.y };
+      return;
+    }
+    const drag = fxDragRef.current;
+    if (!drag || drag.id !== e.pointerId) return;
+    if (kind === "up") {
+      fxDragRef.current = null;
+      editFx(lineId, (list) => list.map((f) => (f.id === drag.fx ? { ...f, x: Math.round(drag.x), y: Math.round(drag.y) } : f)));
+      return;
+    }
+    drag.x = Math.max(0, Math.min(STAGE_W, x + drag.dx));
+    drag.y = Math.max(0, Math.min(STAGE_H, y + drag.dy));
+  };
+
+  const fxLine = fxLineId ? story.lines.find((l) => l.id === fxLineId) : undefined;
+  const fxLineIndex = fxLine ? story.lines.indexOf(fxLine) : -1;
+
   const busy = playing || filming || recordingLine !== null;
 
   return (
@@ -496,7 +706,17 @@ export default function StoryStudio({
       {/* Escenario + turnos */}
       <div className="md:flex-1 min-w-0 md:min-h-0 flex flex-col gap-3">
         <div className="shrink-0 h-[40vh] md:h-auto md:flex-[3] md:min-h-0 flex items-center justify-center relative">
-          <canvas ref={canvasRef} width={STAGE_W} height={STAGE_H} className="max-w-full max-h-full rounded-3xl shadow-2xl" />
+          <canvas
+            ref={canvasRef}
+            width={STAGE_W}
+            height={STAGE_H}
+            onPointerDown={(e) => onCanvasPointer(e, "down")}
+            onPointerMove={(e) => onCanvasPointer(e, "move")}
+            onPointerUp={(e) => onCanvasPointer(e, "up")}
+            onPointerCancel={(e) => onCanvasPointer(e, "up")}
+            className="max-w-full max-h-full rounded-3xl shadow-2xl touch-none"
+            style={{ touchAction: "none" }}
+          />
           {filming && (
             <div className="absolute top-3 right-3 bg-red-600 text-white font-black rounded-full px-4 py-2 animate-pulse">⏺ Grabando</div>
           )}
@@ -511,14 +731,14 @@ export default function StoryStudio({
           )}
           {story.lines.map((line, i) => {
             const c = charById(line.charId);
-            const mv = MOVES.find((m) => m.id === line.move)!;
+            const mv = moveInfo(line.move, customMoves);
             const vc = VOICES.find((v) => v.rate === line.rate) ?? VOICES[0];
             const rec = recordingLine === line.id;
             return (
               <div
                 key={line.id}
                 className={`flex items-center gap-2 rounded-2xl p-1.5 border-2 ${
-                  playIndex === i ? "border-amber-300 bg-amber-300/10" : "border-white/10 bg-white/5"
+                  playIndex === i ? "border-amber-300 bg-amber-300/10" : fxLineId === line.id ? "border-orange-400 bg-orange-400/10" : "border-white/10 bg-white/5"
                 }`}
               >
                 <span className="w-7 text-center text-white/60 font-bold">{i + 1}</span>
@@ -538,12 +758,27 @@ export default function StoryStudio({
                 </button>
                 <button
                   disabled={busy}
-                  onClick={() => editLine(line.id, (l) => ({ ...l, move: cycle(MOVES.map((m) => m.id), l.move) }))}
+                  onClick={() => editLine(line.id, (l) => ({ ...l, move: cycle(moveIds, l.move) }))}
                   className={`${btn} w-20 flex flex-col items-center justify-center bg-white/10 text-white`}
                   title="Qué hace"
                 >
                   <span className="text-xl">{mv.emoji}</span>
-                  <span className="text-[10px]">{mv.label}</span>
+                  <span className="text-[10px] truncate max-w-full px-1">{mv.label}</span>
+                </button>
+                <button
+                  disabled={busy}
+                  onClick={() => setFxLineId(fxLineId === line.id ? null : line.id)}
+                  className={`${btn} w-14 relative text-xl ${
+                    fxLineId === line.id ? "bg-orange-400 text-slate-900" : "bg-white/10 text-white"
+                  }`}
+                  title="Efectos"
+                >
+                  ✨
+                  {!!line.effects?.length && (
+                    <span className="absolute -top-1 -right-1 bg-orange-400 text-slate-900 text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                      {line.effects.length}
+                    </span>
+                  )}
                 </button>
                 {rec ? (
                   <button onClick={stopMic} className={`${btn} w-20 bg-rose-600 text-white animate-pulse`}>
@@ -585,7 +820,10 @@ export default function StoryStudio({
                 </button>
                 <button
                   disabled={busy}
-                  onClick={() => update((s) => ({ ...s, lines: s.lines.filter((l) => l.id !== line.id) }))}
+                  onClick={() => {
+                    if (fxLineId === line.id) setFxLineId(null);
+                    update((s) => ({ ...s, lines: s.lines.filter((l) => l.id !== line.id) }));
+                  }}
                   className={`${btn} w-12 bg-white/10 text-white`}
                   aria-label="Borrar turno"
                 >
@@ -604,6 +842,65 @@ export default function StoryStudio({
 
       {/* Panel */}
       <div className="md:w-64 shrink-0 flex flex-col gap-3 md:overflow-y-auto">
+        {fxLine && (
+          <div className="bg-orange-400/10 border-2 border-orange-400/50 rounded-2xl p-2 flex flex-col gap-2 shrink-0">
+            <div className="text-orange-100 font-bold px-1">✨ Efectos del turno {fxLineIndex + 1}</div>
+            <p className="text-xs text-orange-100/80 px-1">Toca uno para ponerlo y arrástralo en el escenario.</p>
+            <EffectButtons onPick={addLineFx} gifs={gifs} gifAnims={gifAnims} onAddGif={onAddGif} onRemoveGif={onRemoveGif} />
+            {(fxLine.effects ?? []).map((fx) => {
+              const info = effectInfo(fx.kind);
+              return (
+                <div key={fx.id} className="bg-white/5 rounded-xl p-1.5 flex flex-col gap-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-2xl w-8 text-center">{info.emoji}</span>
+                    <span className="flex-1 text-white text-sm font-bold truncate">{info.label}</span>
+                    <button
+                      aria-label="Quitar efecto"
+                      onClick={() => editFx(fxLine.id, (l) => l.filter((f) => f.id !== fx.id))}
+                      className="w-11 h-11 rounded-xl bg-white/10 text-white active:scale-95"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      aria-label="Más grande"
+                      onClick={() => editFx(fxLine.id, (l) => l.map((f) => (f.id === fx.id ? { ...f, size: Math.min(600, Math.round(f.size * 1.2)) } : f)))}
+                      className="w-11 h-11 rounded-xl bg-white/10 text-white active:scale-95"
+                    >
+                      ➕
+                    </button>
+                    <button
+                      aria-label="Más chico"
+                      onClick={() => editFx(fxLine.id, (l) => l.map((f) => (f.id === fx.id ? { ...f, size: Math.max(60, Math.round(f.size / 1.2)) } : f)))}
+                      className="w-11 h-11 rounded-xl bg-white/10 text-white active:scale-95"
+                    >
+                      ➖
+                    </button>
+                    {EFFECTS.find((e) => e.id === fx.kind)?.once ? (
+                      <span className="flex-1 text-xs text-white/60 text-center">Pasa una vez</span>
+                    ) : (
+                      <button
+                        onClick={() => editFx(fxLine.id, (l) => l.map((f) => (f.id === fx.id ? { ...f, turns: cycle(EFFECT_TURNS, f.turns) } : f)))}
+                        className="flex-1 min-h-[44px] rounded-xl bg-white/10 text-white text-xs font-bold active:scale-95"
+                      >
+                        ⏱ {fx.turns === 0 ? "Hasta el final" : fx.turns === 1 ? "Este turno" : `${fx.turns} turnos`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            <div className="grid grid-cols-2 gap-2">
+              <button disabled={busy} onClick={() => play(fxLineIndex, fxLineIndex + 1)} className={`${btn} bg-white/10 text-white disabled:opacity-40`}>
+                ▶️ Ver
+              </button>
+              <button onClick={() => setFxLineId(null)} className={`${btn} bg-orange-400 text-slate-900`}>
+                ✅ Listo
+              </button>
+            </div>
+          </div>
+        )}
         <input
           value={story.title}
           onChange={(e) => update((s) => ({ ...s, title: e.target.value.slice(0, 40) }))}

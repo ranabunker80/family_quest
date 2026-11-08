@@ -13,6 +13,7 @@ import {
   type Mouth,
   type Pose,
   type SceneId,
+  type Joints,
 } from "@/lib/animation-studio-data";
 
 export const RES = 2; // resolución interna del dibujo (nitidez en tablet)
@@ -387,6 +388,8 @@ export function drawMouth(ctx: CanvasRenderingContext2D, m: Mouth, open: number)
   ctx.restore();
 }
 
+export const pivotOf = (id: PartId, joints?: Joints): [number, number] => joints?.[id] ?? PART_BY_ID[id].pivot;
+
 export function drawCharacter(
   ctx: CanvasRenderingContext2D,
   caches: Caches,
@@ -395,14 +398,18 @@ export function drawCharacter(
   hipY: number,
   scale: number,
   mouth: Mouth | null = null,
-  mouthOpen = 0
+  mouthOpen = 0,
+  joints?: Joints
 ) {
-  const limb = (id: PartId, angle: number) => {
-    const [px, py] = PART_BY_ID[id].pivot;
-    ctx.save();
+  const turn = (id: PartId, angle: number) => {
+    const [px, py] = pivotOf(id, joints);
     ctx.translate(px, py);
     ctx.rotate(angle);
     ctx.translate(-px, -py);
+  };
+  const limb = (id: PartId, angle: number) => {
+    ctx.save();
+    turn(id, angle);
     ctx.drawImage(caches[id], 0, 0, CHAR_W, CHAR_H);
     ctx.restore();
   };
@@ -418,17 +425,12 @@ export function drawCharacter(
   limb("legL", pose.legL);
   limb("legR", pose.legR);
   ctx.save();
-  ctx.translate(HIP[0], HIP[1]);
-  ctx.rotate(pose.body);
-  ctx.translate(-HIP[0], -HIP[1]);
+  turn("body", pose.body);
   ctx.drawImage(caches.body, 0, 0, CHAR_W, CHAR_H);
   limb("armL", pose.armL);
   limb("armR", pose.armR);
-  const [nx, ny] = PART_BY_ID.head.pivot;
   ctx.save();
-  ctx.translate(nx, ny);
-  ctx.rotate(pose.head);
-  ctx.translate(-nx, -ny);
+  turn("head", pose.head);
   ctx.drawImage(caches.head, 0, 0, CHAR_W, CHAR_H);
   if (mouth) drawMouth(ctx, mouth, mouthOpen);
   ctx.restore();
@@ -436,14 +438,107 @@ export function drawCharacter(
   ctx.restore();
 }
 
-export function makeThumbnail(caches: Caches, mouth: Mouth | null): string {
+// ---------- Títere: puntitos para mover al personaje con el dedo ----------
+// Para cada parte, la "punta" que el niño arrastra (mano, pie, cabeza, pecho),
+// en coordenadas del personaje sin girar.
+export type PuppetTips = Record<PartId, [number, number]>;
+
+const DEFAULT_REACH: Record<PartId, [number, number]> = {
+  head: [0, -75], body: [0, -140], armL: [0, 130], armR: [0, 130], legL: [0, 160], legR: [0, 160],
+};
+
+export function puppetTips(caches: Caches, joints?: Joints): PuppetTips {
+  const tips = {} as PuppetTips;
+  for (const p of PARTS) {
+    const [px, py] = pivotOf(p.id, joints);
+    const c = caches[p.id];
+    const d = c.getContext("2d", { willReadFrequently: true })!.getImageData(0, 0, c.width, c.height).data;
+    let sx = 0, sy = 0, n = 0, far = 0;
+    const step = 6;
+    for (let y = 0; y < c.height; y += step) {
+      for (let x = 0; x < c.width; x += step) {
+        if (d[(y * c.width + x) * 4 + 3] < 40) continue;
+        const cx = x / RES, cy = y / RES;
+        sx += cx; sy += cy; n++;
+        far = Math.max(far, Math.hypot(cx - px, cy - py));
+      }
+    }
+    if (n < 4) {
+      tips[p.id] = [px + DEFAULT_REACH[p.id][0], py + DEFAULT_REACH[p.id][1]];
+      continue;
+    }
+    let dx = sx / n - px, dy = sy / n - py;
+    const len = Math.hypot(dx, dy);
+    if (len < 8) [dx, dy] = DEFAULT_REACH[p.id];
+    const k = Math.max(50, far * 0.8) / Math.max(1, Math.hypot(dx, dy));
+    // la cabeza se agarra de su centro, lo demás de la punta
+    tips[p.id] = p.id === "head" ? [sx / n, sy / n] : [px + dx * k, py + dy * k];
+  }
+  return tips;
+}
+
+const rotAround = (pt: [number, number], c: [number, number], a: number): [number, number] => {
+  const dx = pt[0] - c[0], dy = pt[1] - c[1];
+  const cos = Math.cos(a), sin = Math.sin(a);
+  return [c[0] + dx * cos - dy * sin, c[1] + dx * sin + dy * cos];
+};
+
+const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+
+// Dónde está cada puntito en el escenario con esta pose (sin vueltas ni aplastado)
+export function puppetHandles(
+  tips: PuppetTips, pose: Pose, hipX: number, hipY: number, scale: number, joints?: Joints
+): Record<PartId | "move", [number, number]> {
+  const toStage = (c: [number, number]): [number, number] => [
+    hipX + pose.x + (c[0] - HIP[0]) * scale,
+    hipY + pose.y + (c[1] - HIP[1]) * scale,
+  ];
+  const body = pivotOf("body", joints);
+  const inBody = (id: PartId) => rotAround(rotAround(tips[id], pivotOf(id, joints), pose[id]), body, pose.body);
+  return {
+    legL: toStage(rotAround(tips.legL, pivotOf("legL", joints), pose.legL)),
+    legR: toStage(rotAround(tips.legR, pivotOf("legR", joints), pose.legR)),
+    body: toStage(rotAround(tips.body, body, pose.body)),
+    armL: toStage(inBody("armL")),
+    armR: toStage(inBody("armR")),
+    head: toStage(inBody("head")),
+    move: toStage(body),
+  };
+}
+
+// Mueve la pose para que el puntito quede bajo el dedo
+export function dragPuppet(
+  pose: Pose, handle: PartId | "move", finger: [number, number], tips: PuppetTips,
+  hipX: number, hipY: number, scale: number, joints?: Joints
+): Pose {
+  const out = { ...pose };
+  const body = pivotOf("body", joints);
+  if (handle === "move") {
+    out.x = Math.max(-420, Math.min(420, finger[0] - hipX - (body[0] - HIP[0]) * scale));
+    out.y = Math.max(-320, Math.min(40, finger[1] - hipY - (body[1] - HIP[1]) * scale));
+    return out;
+  }
+  let c: [number, number] = [
+    (finger[0] - hipX - pose.x) / scale + HIP[0],
+    (finger[1] - hipY - pose.y) / scale + HIP[1],
+  ];
+  if (handle === "armL" || handle === "armR" || handle === "head") c = rotAround(c, body, -pose.body);
+  const piv = pivotOf(handle, joints);
+  const tip = tips[handle];
+  const raw = Math.atan2(c[1] - piv[1], c[0] - piv[0]) - Math.atan2(tip[1] - piv[1], tip[0] - piv[0]);
+  // sin saltos de una vuelta completa: así la repetición no gira de más
+  out[handle] = pose[handle] + wrap(raw - pose[handle]);
+  return out;
+}
+
+export function makeThumbnail(caches: Caches, mouth: Mouth | null, joints?: Joints): string {
   const c = document.createElement("canvas");
   c.width = 200;
   c.height = 260;
   const ctx = c.getContext("2d")!;
   ctx.fillStyle = "#fffdf7";
   ctx.fillRect(0, 0, c.width, c.height);
-  drawCharacter(ctx, caches, REST_POSE, 100, HIP[1] * 0.5, 0.5, mouth, 0);
+  drawCharacter(ctx, caches, REST_POSE, 100, HIP[1] * 0.5, 0.5, mouth, 0, joints);
   return c.toDataURL("image/png");
 }
 
@@ -669,6 +764,7 @@ export interface CharacterRuntime {
   caches: Caches;
   mouth: Mouth | null;
   name: string;
+  joints?: Joints;
 }
 
 export async function prepareCharacter(c: SavedCharacter): Promise<{ runtime: CharacterRuntime; images: LoadedImages }> {
@@ -683,7 +779,12 @@ export async function prepareCharacter(c: SavedCharacter): Promise<{ runtime: Ch
     })
   );
   return {
-    runtime: { caches: buildCaches(c.parts, images), mouth: c.mouth ? { ...c.mouth } : null, name: c.name },
+    runtime: {
+      caches: buildCaches(c.parts, images),
+      mouth: c.mouth ? { ...c.mouth } : null,
+      name: c.name,
+      joints: c.joints,
+    },
     images,
   };
 }

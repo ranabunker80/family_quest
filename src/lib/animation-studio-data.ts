@@ -81,6 +81,9 @@ export const VOICES = [
 
 export const VOICE_MAX_SECONDS = 15;
 
+// Puntos donde se dobla cada parte, puestos por el niño (si no, los de PARTS)
+export type Joints = Partial<Record<PartId, [number, number]>>;
+
 export interface SavedCharacter {
   id: string;
   name: string;
@@ -90,6 +93,7 @@ export interface SavedCharacter {
   images?: PartImages;
   mouth?: Mouth;
   voice?: Blob; // grabación de su voz (se queda en la tablet)
+  joints?: Joints;
 }
 
 export function emptyParts(): CharacterParts {
@@ -239,6 +243,90 @@ export function poseFor(move: MoveId, t: number): Pose {
   return p;
 }
 
+// ---------- Movimientos inventados (moviendo los puntitos) ----------
+// Cada cuadro: [t, x, y, body, head, armL, armR, legL, legR]
+export const POSE_KEYS = ["x", "y", "body", "head", "armL", "armR", "legL", "legR"] as const;
+
+export interface CustomMove {
+  id: string;
+  name: string;
+  emoji: string;
+  frames: number[][];
+}
+
+export const MAX_CUSTOM_MOVES = 20;
+export const MOVE_MAX_SECONDS = 20;
+export const KEYFRAME_SECONDS = 0.5; // un fotograma tarda esto en llegar desde el anterior
+export const CUSTOM_MOVE_EMOJIS = ["⭐", "🕺", "🤖", "🦖", "🥷", "🐒", "🦸", "🧟"];
+
+export const customMoveId = (id: string) => `my:${id}`;
+
+export function poseToFrame(t: number, p: Pose): number[] {
+  return [t, ...POSE_KEYS.map((k) => p[k])];
+}
+
+// La pose del movimiento inventado en el segundo t (se repite)
+export function customPoseAt(m: CustomMove, t: number): Pose {
+  const p: Pose = { ...REST_POSE };
+  const f = m.frames;
+  if (!f.length) return p;
+  const total = f[f.length - 1][0];
+  const tt = total > 0 ? t % (total + 0.4) : 0;
+  let a = f[0], b = f[0];
+  if (tt >= total) a = b = f[f.length - 1];
+  else {
+    for (let i = 1; i < f.length; i++) {
+      if (f[i][0] >= tt) {
+        a = f[i - 1];
+        b = f[i];
+        break;
+      }
+    }
+  }
+  const span = b[0] - a[0];
+  const k = span > 0 ? Math.min(1, Math.max(0, (tt - a[0]) / span)) : 0;
+  POSE_KEYS.forEach((key, i) => {
+    p[key] = a[i + 1] + (b[i + 1] - a[i + 1]) * k;
+  });
+  return p;
+}
+
+// Movimiento prehecho o inventado ("my:<id>")
+export function movePose(move: string, t: number, custom: CustomMove[]): Pose {
+  if (move.startsWith("my:")) {
+    const m = custom.find((c) => customMoveId(c.id) === move);
+    return m ? customPoseAt(m, t) : poseFor("idle", t);
+  }
+  return poseFor(move as MoveId, t);
+}
+
+export function moveInfo(move: string, custom: CustomMove[]): { label: string; emoji: string } {
+  if (move.startsWith("my:")) {
+    const m = custom.find((c) => customMoveId(c.id) === move);
+    return m ? { label: m.name || "Mío", emoji: m.emoji } : { label: "Quieto", emoji: "🧍" };
+  }
+  return MOVES.find((m) => m.id === move) ?? MOVES[MOVES.length - 1];
+}
+
+// ---------- Efectos (fuego, explosión, GIFs propios) ----------
+export interface StoryEffect {
+  id: string;
+  kind: string; // id de EFFECTS o "gif:<id>"
+  x: number; // centro, en coordenadas del escenario
+  y: number;
+  size: number;
+  turns: number; // cuántos turnos dura; 0 = hasta el final
+}
+
+export interface CustomGif {
+  id: string;
+  blob: Blob;
+}
+
+export const MAX_GIFS = 12;
+export const GIF_MAX_BYTES = 6 * 1024 * 1024;
+export const EFFECT_TURNS = [1, 2, 3, 0];
+
 // ---------- Escenarios ----------
 export type SceneId = "park" | "space" | "beach" | "disco" | "jungle";
 
@@ -260,9 +348,10 @@ export interface CustomBackground {
 export interface StoryLine {
   id: string;
   charId: string;
-  move: MoveId;
+  move: string; // MoveId o "my:<id>"
   rate: number;
   voice?: Blob;
+  effects?: StoryEffect[];
 }
 
 export interface Story {

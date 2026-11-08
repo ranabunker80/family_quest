@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import StoryStudio, { SceneButtons } from "@/components/game/StoryStudio";
+import StoryStudio, { SceneButtons, EffectButtons } from "@/components/game/StoryStudio";
+import MoveRecorder from "@/components/game/MoveRecorder";
+import { DEFAULT_EFFECT_SIZE, decodeGif, drawEffect, effectDone, effectInfo, type GifAnim } from "@/lib/animation-studio-effects";
 import {
   CHAR_W,
   CHAR_H,
@@ -13,6 +15,14 @@ import {
   REST_POSE,
   emptyParts,
   poseFor,
+  movePose,
+  customMoveId,
+  MAX_CUSTOM_MOVES,
+  MAX_GIFS,
+  GIF_MAX_BYTES,
+  type CustomMove,
+  type CustomGif,
+  type Joints,
   MOUTH_STYLES,
   DEFAULT_MOUTH,
   VOICES,
@@ -29,7 +39,6 @@ import {
   type Story,
   MAX_BACKGROUNDS,
   MAX_STORIES,
-  type MoveId,
 } from "@/lib/animation-studio-data";
 import {
   CHAR_SCALE,
@@ -58,6 +67,7 @@ import {
   loudness,
   makeCutout,
   makeThumbnail,
+  pivotOf,
   renderPart,
   storeCharacters,
   strokeSegment,
@@ -75,6 +85,20 @@ const RECORD_SECONDS = 10;
 const MEDIAPIPE_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.33/wasm";
 const POSE_MODEL =
   "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+
+// Efecto puesto en el escenario de un personaje (no se guarda; sale en el video)
+interface LiveEffect {
+  id: string;
+  kind: string;
+  x: number;
+  y: number;
+  size: number;
+  born: number;
+}
+
+const JOINT_COLORS: Record<PartId, string> = {
+  head: "#facc15", body: "#22c55e", armL: "#ef4444", armR: "#ef4444", legL: "#3b82f6", legR: "#3b82f6",
+};
 
 // ---------- Modo espejo: pose del niño → pose del personaje ----------
 interface MirrorState {
@@ -151,7 +175,15 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   const [size, setSize] = useState(BRUSH_SIZES[1].size);
   const [erasing, setErasing] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
-  const [move, setMove] = useState<MoveId>("dance");
+  const [move, setMove] = useState<string>("dance");
+  const [customMoves, setCustomMoves] = useState<CustomMove[]>([]);
+  const [recorderOpen, setRecorderOpen] = useState(false);
+  const [deleteMoveAsk, setDeleteMoveAsk] = useState(false);
+  const [gifs, setGifs] = useState<CustomGif[]>([]);
+  const [gifAnims, setGifAnims] = useState<Map<string, GifAnim>>(() => new Map());
+  const [stageFx, setStageFx] = useState<LiveEffect[]>([]);
+  const [editingJoints, setEditingJoints] = useState(false);
+  const [testingJoints, setTestingJoints] = useState(false);
   const [scene, setScene] = useState<string>("park");
   const [mirror, setMirror] = useState(false);
   const [mirrorStatus, setMirrorStatus] = useState<"off" | "loading" | "noone" | "ok" | "error">("off");
@@ -176,6 +208,12 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   const undoRef = useRef<PartId[]>([]);
   const imagesRef = useRef<LoadedImages>({});
   const mouthRef = useRef<Mouth | null>(null);
+  const jointsRef = useRef<Joints>({});
+  const jointDragRef = useRef<{ id: number; part: PartId } | null>(null);
+  const customMovesRef = useRef<CustomMove[]>([]);
+  const gifAnimsRef = useRef<Map<string, GifAnim>>(new Map());
+  const stageFxRef = useRef<LiveEffect[]>([]);
+  const fxDragRef = useRef<{ id: number; fx: string; dx: number; dy: number } | null>(null);
   const voiceRef = useRef<Blob | null>(null);
   const voiceBufferRef = useRef<AudioBuffer | null>(null);
   const audioRef = useRef<{ ctx: AudioContext; analyser: AnalyserNode; dest: MediaStreamAudioDestinationNode } | null>(null);
@@ -202,6 +240,9 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   const nameRef = useRef(name);
 
   moveRef.current = move;
+  customMovesRef.current = customMoves;
+  gifAnimsRef.current = gifAnims;
+  stageFxRef.current = stageFx;
   sceneRef.current = scene;
   bgImagesRef.current = bgImages;
   mirrorRef.current = mirror;
@@ -212,6 +253,8 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     loadCharacters(storageKey).then((list) => alive && setCharacters(list));
     idbGet<CustomBackground[]>(`${storageKey}:backgrounds`, []).then((list) => alive && setBackgrounds(list));
     idbGet<Story[]>(`${storageKey}:stories`, []).then((list) => alive && setStories(list));
+    idbGet<CustomMove[]>(`${storageKey}:moves`, []).then((list) => alive && setCustomMoves(list));
+    idbGet<CustomGif[]>(`${storageKey}:gifs`, []).then((list) => alive && setGifs(list));
     return () => {
       alive = false;
     };
@@ -247,6 +290,92 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
       setNotice("No pude abrir esa foto 😕 Intenta con otra.");
       return null;
     }
+  };
+
+  // GIFs propios: separarlos en cuadros una vez
+  useEffect(() => {
+    let alive = true;
+    const missing = gifs.filter((g) => !gifAnims.has(g.id));
+    if (!missing.length) return;
+    (async () => {
+      const done: [string, GifAnim][] = [];
+      for (const g of missing) {
+        try {
+          done.push([g.id, await decodeGif(g.blob)]);
+        } catch {
+          /* un GIF dañado no impide el resto */
+        }
+      }
+      if (!alive || !done.length) return;
+      setGifAnims((prev) => {
+        const next = new Map(prev);
+        done.forEach(([id, a]) => next.set(id, a));
+        return next;
+      });
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [gifs, gifAnims]);
+
+  const addGif = async (file: File): Promise<string | null> => {
+    if (file.size > GIF_MAX_BYTES) {
+      setNotice("Ese GIF está muy pesado 😕 Busca uno más chico.");
+      return null;
+    }
+    try {
+      const anim = await decodeGif(file);
+      const entry: CustomGif = { id: `${Date.now()}`, blob: file };
+      setGifAnims((prev) => new Map(prev).set(entry.id, anim));
+      const list = [entry, ...gifs].slice(0, MAX_GIFS);
+      setGifs(list);
+      if (!(await idbPut(`${storageKey}:gifs`, list))) setNotice("No se pudo guardar el GIF en esta tablet.");
+      return entry.id;
+    } catch {
+      setNotice("No pude abrir ese GIF 😕 Intenta con otro.");
+      return null;
+    }
+  };
+
+  const removeGif = (id: string) => {
+    const list = gifs.filter((g) => g.id !== id);
+    setGifs(list);
+    idbPut(`${storageKey}:gifs`, list);
+    setStageFx((fx) => fx.filter((f) => f.kind !== `gif:${id}`));
+  };
+
+  // ---------- Movimientos inventados ----------
+  const saveCustomMove = (m: CustomMove) => {
+    const list = [m, ...customMoves].slice(0, MAX_CUSTOM_MOVES);
+    setCustomMoves(list);
+    idbPut(`${storageKey}:moves`, list).then((ok) => {
+      if (!ok) setNotice("No se pudo guardar el movimiento en esta tablet.");
+    });
+    setRecorderOpen(false);
+    setMirror(false);
+    setMove(customMoveId(m.id));
+  };
+
+  const deleteCustomMove = (key: string) => {
+    const list = customMoves.filter((m) => customMoveId(m.id) !== key);
+    setCustomMoves(list);
+    idbPut(`${storageKey}:moves`, list);
+    setDeleteMoveAsk(false);
+    setMove("dance");
+  };
+
+  // ---------- Efectos en el escenario ----------
+  const addStageFx = (kind: string) => {
+    const n = stageFxRef.current.length;
+    const fx: LiveEffect = {
+      id: `${Date.now()}-${Math.random()}`,
+      kind,
+      x: Math.min(STAGE_W - 80, STAGE_W / 2 + 140 + n * 60),
+      y: GROUND_Y - 260 - n * 30,
+      size: DEFAULT_EFFECT_SIZE,
+      born: performance.now(),
+    };
+    setStageFx((list) => [...list, fx]);
   };
 
   const removeBackground = (id: string) => {
@@ -344,13 +473,62 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
       ctx.strokeRect(-img.p.w / 2, -img.p.h / 2, img.p.w, img.p.h);
       ctx.restore();
     }
+    if (editingJoints) {
+      // Todos los puntos: el niño los arrastra a donde se dobla cada parte
+      for (const p of PARTS) {
+        const [jx, jy] = pivotOf(p.id, jointsRef.current);
+        ctx.beginPath();
+        ctx.arc(jx, jy, 16, 0, Math.PI * 2);
+        ctx.fillStyle = JOINT_COLORS[p.id];
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+        ctx.font = "16px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(p.emoji, jx, jy - 28);
+      }
+      return;
+    }
     // Articulación de la parte activa: "aquí se dobla"
-    const [jx, jy] = PART_BY_ID[activePart].pivot;
+    const [jx, jy] = pivotOf(activePart, jointsRef.current);
     ctx.fillStyle = "#a855f7";
     ctx.beginPath();
     ctx.arc(jx, jy, 7, 0, Math.PI * 2);
     ctx.fill();
-  }, [activePart, tool, editingMouth]);
+  }, [activePart, tool, editingMouth, editingJoints]);
+
+  // «Probar»: el personaje baila un ratito en la hoja con sus puntos nuevos
+  useEffect(() => {
+    if (!testingJoints || phase !== "draw") return;
+    const canvas = drawCanvasRef.current;
+    const caches = cachesRef.current;
+    if (!canvas || !caches) return;
+    const ctx = canvas.getContext("2d")!;
+    const start = performance.now();
+    let frame = 0;
+    const loop = () => {
+      const t = (performance.now() - start) / 1000;
+      if (t > 3) {
+        setTestingJoints(false);
+        return;
+      }
+      ctx.setTransform(RES, 0, 0, RES, 0, 0);
+      ctx.fillStyle = "#fffdf7";
+      ctx.fillRect(0, 0, CHAR_W, CHAR_H);
+      const pose = poseFor(t < 1.5 ? "dance" : "karate", t);
+      pose.x = 0;
+      pose.y *= 0.4;
+      drawCharacter(ctx, caches, pose, HIP[0], HIP[1], 1, mouthRef.current, 0, jointsRef.current);
+      frame = requestAnimationFrame(loop);
+    };
+    frame = requestAnimationFrame(loop);
+    return () => {
+      cancelAnimationFrame(frame);
+      redrawDrawView();
+    };
+  }, [testingJoints, phase, redrawDrawView]);
 
   useEffect(() => {
     if (phase === "draw") redrawDrawView();
@@ -428,8 +606,40 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     redrawDrawView();
   };
 
+  const onJointPointer = (e: React.PointerEvent<HTMLCanvasElement>, kind: "down" | "move" | "up") => {
+    const pt = toCharCoords(e) as [number, number];
+    if (kind === "down") {
+      let best: PartId | null = null;
+      let bestD = 45;
+      for (const p of PARTS) {
+        const [jx, jy] = pivotOf(p.id, jointsRef.current);
+        const d = Math.hypot(jx - pt[0], jy - pt[1]);
+        if (d < bestD) {
+          best = p.id;
+          bestD = d;
+        }
+      }
+      if (!best) return;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      jointDragRef.current = { id: e.pointerId, part: best };
+      return;
+    }
+    const drag = jointDragRef.current;
+    if (!drag || drag.id !== e.pointerId) return;
+    if (kind === "up") {
+      jointDragRef.current = null;
+      return;
+    }
+    jointsRef.current[drag.part] = [
+      Math.max(0, Math.min(CHAR_W, pt[0])),
+      Math.max(0, Math.min(CHAR_H, pt[1])),
+    ];
+    redrawDrawView();
+  };
+
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!cachesRef.current) return;
+    if (!cachesRef.current || testingJoints) return;
+    if (editingJoints) return onJointPointer(e, "down");
     if (editingMouth) return onMouthPointer(e, "down");
     if (tool === "move") return onMovePointer(e, "down");
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -446,6 +656,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (editingJoints) return onJointPointer(e, "move");
     if (editingMouth) return onMouthPointer(e, "move");
     if (tool === "move") return onMovePointer(e, "move");
     const stroke = currentStrokeRef.current;
@@ -461,6 +672,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (editingJoints) return onJointPointer(e, "up");
     if (editingMouth) return onMouthPointer(e, "up");
     if (tool === "move") return onMovePointer(e, "up");
     const stroke = currentStrokeRef.current;
@@ -538,6 +750,8 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
       el: img.el,
       p: { ...img.p, x: ox + (px - img.p.x), rot: -img.p.rot, flip: !img.p.flip },
     };
+    const j = jointsRef.current[activePart];
+    if (j) jointsRef.current[other] = [ox + (px - j[0]), j[1]];
     rerender(other);
     setImageVersion((v) => v + 1);
     setActivePart(other);
@@ -554,6 +768,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
       setHasMouth(true);
     }
     setActivePart("head");
+    setEditingJoints(false);
     setEditingMouth(true);
   };
 
@@ -575,9 +790,11 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     partsRef.current = emptyParts();
     imagesRef.current = {};
     mouthRef.current = null;
+    jointsRef.current = {};
     voiceRef.current = null;
     voiceBufferRef.current = null;
     setHasMouth(false);
+    setEditingJoints(false);
     setHasVoice(false);
     setEditingMouth(false);
     cachesRef.current = buildCaches(partsRef.current);
@@ -605,6 +822,8 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     );
     imagesRef.current = loaded;
     mouthRef.current = c.mouth ? { ...c.mouth } : null;
+    jointsRef.current = structuredClone(c.joints ?? {});
+    setEditingJoints(false);
     voiceRef.current = c.voice ?? null;
     voiceBufferRef.current = null;
     setHasMouth(!!c.mouth);
@@ -637,7 +856,8 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     entry.images = images;
     entry.mouth = mouthRef.current ?? undefined;
     entry.voice = voiceRef.current ?? undefined;
-    entry.thumb = makeThumbnail(cachesRef.current, mouthRef.current);
+    entry.joints = Object.keys(jointsRef.current).length ? structuredClone(jointsRef.current) : undefined;
+    entry.thumb = makeThumbnail(cachesRef.current, mouthRef.current, entry.joints);
     const list = [entry, ...characters.filter((c) => c.id !== id)].slice(0, MAX_SAVED);
     setCharacters(list);
     setEditingId(id);
@@ -775,7 +995,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
       } else {
         seen = false;
         mirrorTarget = null;
-        target = poseFor(moveRef.current, t);
+        target = movePose(moveRef.current, t, customMovesRef.current);
         current = blendPose(current, target, 0.5);
       }
 
@@ -792,8 +1012,21 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
       mouthOpen += (level - mouthOpen) * (level > mouthOpen ? 0.6 : 0.25);
       drawCharacter(
         ctx, caches, current, STAGE_W / 2, GROUND_Y - (FEET_Y - HIP[1]) * CHAR_SCALE, CHAR_SCALE,
-        mouthRef.current, mouthOpen
+        mouthRef.current, mouthOpen, jointsRef.current
       );
+      // efectos: los de una sola vez se quitan solos al acabar
+      const now = performance.now();
+      let finished = false;
+      for (const fx of stageFxRef.current) {
+        const age = (now - fx.born) / 1000;
+        if (effectDone(fx.kind, age)) finished = true;
+        else drawEffect(ctx, fx.kind, fx.x, fx.y, fx.size, age, gifAnimsRef.current);
+      }
+      if (finished) {
+        const alive = stageFxRef.current.filter((fx) => !effectDone(fx.kind, (now - fx.born) / 1000));
+        stageFxRef.current = alive;
+        setStageFx(alive);
+      }
       const label = nameRef.current.trim();
       if (label) {
         ctx.font = "bold 34px system-ui, sans-serif";
@@ -980,12 +1213,39 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     stopVoiceRecording();
     stopTalking();
     setMirror(false);
+    setStageFx([]);
   }, [phase]);
 
   useEffect(() => () => {
     stopCamera();
     landmarkerRef.current?.close?.();
   }, [stopCamera]);
+
+  // Arrastrar un efecto con el dedo en el escenario
+  const onStagePointer = (e: React.PointerEvent<HTMLCanvasElement>, kind: "down" | "move" | "up") => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width) * STAGE_W;
+    const y = ((e.clientY - r.top) / r.height) * STAGE_H;
+    if (kind === "down") {
+      const hit = [...stageFxRef.current].reverse().find((f) => Math.hypot(f.x - x, f.y - y) < f.size * 0.6);
+      if (!hit) return;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      fxDragRef.current = { id: e.pointerId, fx: hit.id, dx: hit.x - x, dy: hit.y - y };
+      return;
+    }
+    const drag = fxDragRef.current;
+    if (!drag || drag.id !== e.pointerId) return;
+    if (kind === "up") {
+      fxDragRef.current = null;
+      setStageFx([...stageFxRef.current]);
+      return;
+    }
+    const fx = stageFxRef.current.find((f) => f.id === drag.fx);
+    if (fx) {
+      fx.x = x + drag.dx;
+      fx.y = y + drag.dy;
+    }
+  };
 
   // ============================================================
   const btn = "min-h-[56px] rounded-2xl font-bold transition-all active:scale-95";
@@ -998,6 +1258,11 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
         characters={characters}
         backgrounds={backgrounds}
         bgImages={bgImages}
+        customMoves={customMoves}
+        gifs={gifs}
+        gifAnims={gifAnims}
+        onAddGif={addGif}
+        onRemoveGif={removeGif}
         onSave={saveStory}
         onAddBackground={addBackground}
         onRemoveBackground={removeBackground}
@@ -1132,9 +1397,10 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
                 onClick={() => {
                   setActivePart(id);
                   setEditingMouth(false);
+                  setEditingJoints(false);
                 }}
                 className={`${btn} px-3 text-left whitespace-nowrap border-2 ${
-                  id === activePart && !editingMouth ? "bg-violet-500 border-violet-300 text-white" : "bg-white/5 border-white/10 text-white/80"
+                  id === activePart && !editingMouth && !editingJoints ? "bg-violet-500 border-violet-300 text-white" : "bg-white/5 border-white/10 text-white/80"
                 }`}
               >
                 <span className="text-2xl mr-1">{p.emoji}</span>
@@ -1152,12 +1418,26 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
             <span className="text-2xl mr-1">👄</span>
             7. Boca que habla {hasMouth && "✅"}
           </button>
+          <button
+            onClick={() => {
+              setEditingMouth(false);
+              setEditingJoints(true);
+            }}
+            className={`${btn} px-3 text-left whitespace-nowrap border-2 ${
+              editingJoints ? "bg-violet-500 border-violet-300 text-white" : "bg-white/5 border-white/10 text-white/80"
+            }`}
+          >
+            <span className="text-2xl mr-1">🔴</span>
+            8. Dónde se dobla {Object.keys(jointsRef.current).length > 0 && "✅"}
+          </button>
         </div>
 
         {/* Lienzo */}
         <div className="shrink-0 h-[65vh] md:h-auto md:shrink md:flex-1 md:min-h-0 min-w-0 flex flex-col items-center gap-2">
           <div className="text-white text-center font-bold">
-            {editingMouth ? (
+            {editingJoints ? (
+              <>🔴 Arrastra cada punto a donde se dobla: hombros ✋, cuello 🙂, cadera 👕 y piernas 🦶.</>
+            ) : editingMouth ? (
               <>👄 Arrastra la boca a su lugar en la cara. En el escenario grabas tu voz y la boca se mueve.</>
             ) : tool === "move" && activeImage ? (
               <>✋ Arrastra la foto con un dedo. Con dos dedos la haces más grande o la giras.</>
@@ -1189,6 +1469,33 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
         <div className="md:w-60 shrink-0 flex flex-col gap-3 md:min-h-0">
           <div className="flex flex-col gap-3 md:flex-1 md:min-h-0 md:overflow-y-auto md:pr-1">
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPhotoChosen} />
+          {editingJoints && (
+            <div className="bg-violet-400/10 border border-violet-400/30 rounded-2xl p-2 flex flex-col gap-2">
+              <p className="text-sm text-violet-100">
+                Cada parte gira alrededor de su punto. Ponlo en el hombro, el cuello o la cadera de tu dibujo.
+              </p>
+              <button
+                disabled={testingJoints}
+                onClick={() => setTestingJoints(true)}
+                className={`${btn} bg-violet-500 text-white disabled:opacity-40`}
+              >
+                🤸 Probar
+              </button>
+              <button
+                onClick={() => {
+                  jointsRef.current = {};
+                  setImageVersion((v) => v + 1);
+                  redrawDrawView();
+                }}
+                className={`${btn} bg-white/10 text-white text-sm`}
+              >
+                ↺ Como estaban
+              </button>
+              <button onClick={() => setEditingJoints(false)} className={`${btn} bg-white/10 text-white text-sm`}>
+                ✅ Listo con los puntos
+              </button>
+            </div>
+          )}
           {editingMouth && (
             <div className="bg-rose-400/10 border border-rose-400/30 rounded-2xl p-2 flex flex-col gap-2">
               <div className="grid grid-cols-2 gap-2">
@@ -1215,7 +1522,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
               </button>
             </div>
           )}
-          {!editingMouth && (<>
+          {!editingMouth && !editingJoints && (<>
           <button
             onClick={() => fileInputRef.current?.click()}
             className={`${btn} bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 text-lg`}
@@ -1301,7 +1608,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
           </div>
           </>)}
           </div>
-          {nextPart && !editingMouth ? (
+          {nextPart && !editingMouth && !editingJoints ? (
             <button onClick={() => setActivePart(nextPart)} className={`${btn} bg-white/15 text-white text-lg`}>
               Siguiente: {PART_BY_ID[nextPart].emoji} {PART_BY_ID[nextPart].label} →
             </button>
@@ -1331,7 +1638,17 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   return (
     <div className="h-full flex flex-col md:flex-row gap-3 min-h-0 overflow-y-auto md:overflow-hidden">
       <div className="shrink-0 h-[45vh] md:h-auto md:shrink md:flex-1 md:min-h-0 min-w-0 flex items-center justify-center relative">
-        <canvas ref={stageCanvasRef} width={STAGE_W} height={STAGE_H} className="max-w-full max-h-full rounded-3xl shadow-2xl" />
+        <canvas
+          ref={stageCanvasRef}
+          width={STAGE_W}
+          height={STAGE_H}
+          onPointerDown={(e) => onStagePointer(e, "down")}
+          onPointerMove={(e) => onStagePointer(e, "move")}
+          onPointerUp={(e) => onStagePointer(e, "up")}
+          onPointerCancel={(e) => onStagePointer(e, "up")}
+          className="max-w-full max-h-full rounded-3xl shadow-2xl touch-none"
+          style={{ touchAction: "none" }}
+        />
         {recordLeft !== null && (
           <div className="absolute top-3 right-3 bg-red-600 text-white font-black rounded-full px-4 py-2 animate-pulse">
             ⏺ {recordLeft}s
@@ -1371,6 +1688,60 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
               <span className="text-xs">{m.label}</span>
             </button>
           ))}
+          {customMoves.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => {
+                setMove(customMoveId(m.id));
+                setDeleteMoveAsk(false);
+              }}
+              className={`${btn} flex flex-col items-center justify-center py-1 border-2 border-dashed ${
+                move === customMoveId(m.id) ? "bg-violet-500 text-white border-violet-200" : "bg-white/10 text-white border-violet-400/50"
+              }`}
+            >
+              <span className="text-2xl">{m.emoji}</span>
+              <span className="text-xs truncate max-w-full px-1">{m.name}</span>
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => {
+            setMirror(false);
+            setRecorderOpen(true);
+          }}
+          className={`${btn} bg-gradient-to-r from-violet-500 to-indigo-500 text-white`}
+        >
+          🎬 Inventar un movimiento
+        </button>
+        {move.startsWith("my:") && !mirror && (
+          deleteMoveAsk ? (
+            <div className="flex gap-2">
+              <button onClick={() => deleteCustomMove(move)} className={`${btn} flex-1 bg-red-500 text-white text-sm`}>Sí, borrar</button>
+              <button onClick={() => setDeleteMoveAsk(false)} className={`${btn} flex-1 bg-white/10 text-white text-sm`}>No</button>
+            </div>
+          ) : (
+            <button onClick={() => setDeleteMoveAsk(true)} className={`${btn} min-h-[44px] bg-white/5 text-white/70 text-sm`}>
+              🗑️ Borrar este movimiento
+            </button>
+          )
+        )}
+        <div className="bg-orange-400/10 border border-orange-400/30 rounded-2xl p-2 flex flex-col gap-2">
+          <div className="text-orange-100 font-bold text-sm px-1">✨ Efectos (arrástralos con el dedo)</div>
+          <EffectButtons onPick={addStageFx} gifs={gifs} gifAnims={gifAnims} onAddGif={addGif} onRemoveGif={removeGif} />
+          {stageFx.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {stageFx.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setStageFx((list) => list.filter((x) => x.id !== f.id))}
+                  className="min-h-[44px] rounded-xl bg-white/10 text-white px-3 font-bold active:scale-95"
+                  aria-label="Quitar efecto"
+                >
+                  {effectInfo(f.kind).emoji} ⏹
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <SceneButtons
           scene={scene}
@@ -1439,6 +1810,18 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
         </button>
         {notice && <div className="bg-amber-400 text-slate-900 font-bold rounded-2xl p-3 text-center">{notice}</div>}
       </div>
+
+      {recorderOpen && cachesRef.current && (
+        <MoveRecorder
+          caches={cachesRef.current}
+          mouth={mouthRef.current}
+          joints={jointsRef.current}
+          scene={scene}
+          bgImages={bgImages}
+          onSave={saveCustomMove}
+          onClose={() => setRecorderOpen(false)}
+        />
+      )}
 
       {videoUrl && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
