@@ -3,7 +3,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import StoryStudio, { SceneButtons, EffectButtons } from "@/components/game/StoryStudio";
 import MoveRecorder from "@/components/game/MoveRecorder";
+import MovieStudio from "@/components/game/MovieStudio";
 import { MUSIC, MUSIC_VOLUMES, MusicPlayer } from "@/lib/animation-studio-music";
+import { ITEMS, ITEM_COLORS, itemHit, itemInfo, placeItem } from "@/lib/animation-studio-items";
 import { DEFAULT_EFFECT_SIZE, decodeGif, drawEffect, effectDone, effectInfo, type GifAnim } from "@/lib/animation-studio-effects";
 import {
   CHAR_W,
@@ -25,6 +27,8 @@ import {
   type CustomMove,
   type CustomGif,
   type Joints,
+  type CharacterItem,
+  MAX_ITEMS,
   MOUTH_STYLES,
   DEFAULT_MOUTH,
   VOICES,
@@ -39,6 +43,8 @@ import {
   type Pose,
   type CustomBackground,
   type Story,
+  type Movie,
+  MAX_MOVIES,
   MAX_BACKGROUNDS,
   MAX_STORIES,
 } from "@/lib/animation-studio-data";
@@ -70,12 +76,13 @@ import {
   makeCutout,
   makeThumbnail,
   pivotOf,
+  puppetTips,
   renderPart,
   storeCharacters,
   strokeSegment,
 } from "@/lib/animation-studio-render";
 
-type Phase = "gallery" | "draw" | "stage" | "story";
+type Phase = "gallery" | "draw" | "stage" | "story" | "movie";
 
 interface Props {
   storageKey: string;
@@ -170,6 +177,9 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   const [stories, setStories] = useState<Story[]>([]);
   const [openStory, setOpenStory] = useState<Story | null>(null);
   const [deleteStoryAsk, setDeleteStoryAsk] = useState<string | null>(null);
+  const [movies, setMovies] = useState<Movie[]>([]);
+  const [openMovie, setOpenMovie] = useState<Movie | null>(null);
+  const [deleteMovieAsk, setDeleteMovieAsk] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [activePart, setActivePart] = useState<PartId>("head");
@@ -188,6 +198,8 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   const [gifAnims, setGifAnims] = useState<Map<string, GifAnim>>(() => new Map());
   const [stageFx, setStageFx] = useState<LiveEffect[]>([]);
   const [editingJoints, setEditingJoints] = useState(false);
+  const [editingItems, setEditingItems] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<string | null>(null);
   const [testingJoints, setTestingJoints] = useState(false);
   const [scene, setScene] = useState<string>("park");
   const [mirror, setMirror] = useState(false);
@@ -214,6 +226,11 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   const imagesRef = useRef<LoadedImages>({});
   const mouthRef = useRef<Mouth | null>(null);
   const jointsRef = useRef<Joints>({});
+  const itemsRef = useRef<CharacterItem[]>([]);
+  const itemGestureRef = useRef<{
+    pointers: Map<number, [number, number]>;
+    start: { it: CharacterItem; pts: [number, number][] } | null;
+  }>({ pointers: new Map(), start: null });
   const jointDragRef = useRef<{ id: number; part: PartId } | null>(null);
   const customMovesRef = useRef<CustomMove[]>([]);
   const gifAnimsRef = useRef<Map<string, GifAnim>>(new Map());
@@ -265,6 +282,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     loadCharacters(storageKey).then((list) => alive && setCharacters(list));
     idbGet<CustomBackground[]>(`${storageKey}:backgrounds`, []).then((list) => alive && setBackgrounds(list));
     idbGet<Story[]>(`${storageKey}:stories`, []).then((list) => alive && setStories(list));
+    idbGet<Movie[]>(`${storageKey}:movies`, []).then((list) => alive && setMovies(list));
     idbGet<CustomMove[]>(`${storageKey}:moves`, []).then((list) => alive && setCustomMoves(list));
     idbGet<CustomGif[]>(`${storageKey}:gifs`, []).then((list) => alive && setGifs(list));
     return () => {
@@ -429,8 +447,39 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     setDeleteStoryAsk(null);
   };
 
+  // ---------- Películas (línea de tiempo) ----------
+  const saveMovie = (movie: Movie) => {
+    setMovies((prev) => {
+      const list = [movie, ...prev.filter((m) => m.id !== movie.id)].slice(0, MAX_MOVIES);
+      idbPut(`${storageKey}:movies`, list);
+      return list;
+    });
+  };
+
+  const newMovie = () => {
+    const movie: Movie = { id: `${Date.now()}`, title: "", scene: "park", length: 20, tracks: [], updatedAt: Date.now() };
+    saveMovie(movie);
+    setOpenMovie(movie);
+    setPhase("movie");
+  };
+
+  const deleteMovie = (id: string) => {
+    setMovies((prev) => {
+      const list = prev.filter((m) => m.id !== id);
+      idbPut(`${storageKey}:movies`, list);
+      return list;
+    });
+    setDeleteMovieAsk(null);
+  };
+
   const rerender = useCallback((part: PartId) => {
-    if (cachesRef.current) renderPart(cachesRef.current[part], partsRef.current[part], imagesRef.current[part]);
+    if (cachesRef.current)
+      renderPart(
+        cachesRef.current[part],
+        partsRef.current[part],
+        imagesRef.current[part],
+        itemsRef.current.filter((it) => it.part === part)
+      );
   }, []);
 
   // ---------- Vista de dibujo ----------
@@ -485,6 +534,21 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
       ctx.strokeRect(-img.p.w / 2, -img.p.h / 2, img.p.w, img.p.h);
       ctx.restore();
     }
+    if (editingItems) {
+      const it = itemsRef.current.find((i) => i.id === selectedItem);
+      if (it) {
+        ctx.save();
+        ctx.translate(it.x, it.y);
+        ctx.rotate(it.rot);
+        ctx.setLineDash([8, 6]);
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = "#f59e0b";
+        const r = Math.max(28, it.size * 0.55);
+        ctx.strokeRect(-r, -r, r * 2, r * 2);
+        ctx.restore();
+      }
+      return;
+    }
     if (editingJoints) {
       // Todos los puntos: el niño los arrastra a donde se dobla cada parte
       for (const p of PARTS) {
@@ -509,7 +573,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     ctx.beginPath();
     ctx.arc(jx, jy, 7, 0, Math.PI * 2);
     ctx.fill();
-  }, [activePart, tool, editingMouth, editingJoints]);
+  }, [activePart, tool, editingMouth, editingJoints, editingItems, selectedItem]);
 
   // «Probar»: el personaje baila un ratito en la hoja con sus puntos nuevos
   useEffect(() => {
@@ -649,8 +713,95 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     redrawDrawView();
   };
 
+  // Accesorios: tocar uno lo elige; 1 dedo lo mueve, 2 dedos lo agrandan y giran
+  const resetItemGesture = () => {
+    const g = itemGestureRef.current;
+    const it = itemsRef.current.find((i) => i.id === selectedItem);
+    g.start = it ? { it: { ...it }, pts: [...g.pointers.values()] } : null;
+  };
+
+  const onItemPointer = (e: React.PointerEvent<HTMLCanvasElement>, kind: "down" | "move" | "up") => {
+    const g = itemGestureRef.current;
+    const pt = toCharCoords(e) as [number, number];
+    if (kind === "down") {
+      if (g.pointers.size === 0) {
+        const hit = [...itemsRef.current].reverse().find((it) => itemHit(it, pt[0], pt[1]));
+        if (!hit) return;
+        if (hit.id !== selectedItem) {
+          setSelectedItem(hit.id);
+          g.pointers.set(e.pointerId, pt);
+          g.start = { it: { ...hit }, pts: [pt] };
+          e.currentTarget.setPointerCapture(e.pointerId);
+          return;
+        }
+      }
+      e.currentTarget.setPointerCapture(e.pointerId);
+      g.pointers.set(e.pointerId, pt);
+      resetItemGesture();
+      return;
+    }
+    if (kind === "up") {
+      g.pointers.delete(e.pointerId);
+      resetItemGesture();
+      return;
+    }
+    if (!g.pointers.has(e.pointerId) || !g.start) return;
+    g.pointers.set(e.pointerId, pt);
+    const it = itemsRef.current.find((i) => i.id === g.start!.it.id);
+    if (!it) return;
+    const now = [...g.pointers.values()];
+    const st = g.start;
+    if (now.length === 1 && st.pts.length === 1) {
+      it.x = st.it.x + now[0][0] - st.pts[0][0];
+      it.y = st.it.y + now[0][1] - st.pts[0][1];
+    } else if (now.length >= 2 && st.pts.length >= 2) {
+      const dist = (a: [number, number], b: [number, number]) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const ang = (a: [number, number], b: [number, number]) => Math.atan2(b[1] - a[1], b[0] - a[0]);
+      it.size = Math.max(25, Math.min(400, st.it.size * (dist(now[0], now[1]) / Math.max(1, dist(st.pts[0], st.pts[1])))));
+      it.rot = st.it.rot + ang(now[0], now[1]) - ang(st.pts[0], st.pts[1]);
+    }
+    rerender(it.part);
+    redrawDrawView();
+  };
+
+  const addItem = (kind: string) => {
+    if (!cachesRef.current) return;
+    if (itemsRef.current.length >= MAX_ITEMS) {
+      setNotice(`Ya tiene ${MAX_ITEMS} accesorios. Quita uno para poner otro.`);
+      return;
+    }
+    const tips = puppetTips(cachesRef.current, jointsRef.current);
+    const it = placeItem(kind, { armL: tips.armL, armR: tips.armR }, `${Date.now()}`);
+    if (!it) return;
+    itemsRef.current.push(it);
+    rerender(it.part);
+    setSelectedItem(it.id);
+    setImageVersion((v) => v + 1);
+  };
+
+  const adjustItem = (fn: (it: CharacterItem) => void) => {
+    const it = itemsRef.current.find((i) => i.id === selectedItem);
+    if (!it) return;
+    const before = it.part;
+    fn(it);
+    rerender(before);
+    if (it.part !== before) rerender(it.part);
+    setImageVersion((v) => v + 1);
+    redrawDrawView();
+  };
+
+  const removeItem = () => {
+    const it = itemsRef.current.find((i) => i.id === selectedItem);
+    if (!it) return;
+    itemsRef.current = itemsRef.current.filter((i) => i.id !== it.id);
+    rerender(it.part);
+    setSelectedItem(null);
+    redrawDrawView();
+  };
+
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!cachesRef.current || testingJoints) return;
+    if (editingItems) return onItemPointer(e, "down");
     if (editingJoints) return onJointPointer(e, "down");
     if (editingMouth) return onMouthPointer(e, "down");
     if (tool === "move") return onMovePointer(e, "down");
@@ -668,6 +819,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (editingItems) return onItemPointer(e, "move");
     if (editingJoints) return onJointPointer(e, "move");
     if (editingMouth) return onMouthPointer(e, "move");
     if (tool === "move") return onMovePointer(e, "move");
@@ -684,6 +836,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (editingItems) return onItemPointer(e, "up");
     if (editingJoints) return onJointPointer(e, "up");
     if (editingMouth) return onMouthPointer(e, "up");
     if (tool === "move") return onMovePointer(e, "up");
@@ -781,6 +934,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     }
     setActivePart("head");
     setEditingJoints(false);
+    setEditingItems(false);
     setEditingMouth(true);
   };
 
@@ -803,6 +957,9 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     imagesRef.current = {};
     mouthRef.current = null;
     jointsRef.current = {};
+    itemsRef.current = [];
+    setEditingItems(false);
+    setSelectedItem(null);
     voiceRef.current = null;
     voiceBufferRef.current = null;
     setHasMouth(false);
@@ -841,7 +998,10 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     setHasMouth(!!c.mouth);
     setHasVoice(!!c.voice);
     setEditingMouth(false);
-    cachesRef.current = buildCaches(partsRef.current, loaded);
+    itemsRef.current = structuredClone(c.items ?? []);
+    setEditingItems(false);
+    setSelectedItem(null);
+    cachesRef.current = buildCaches(partsRef.current, loaded, itemsRef.current);
     setTool("draw");
     undoRef.current = [];
     setCanUndo(false);
@@ -868,6 +1028,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     entry.images = images;
     entry.mouth = mouthRef.current ?? undefined;
     entry.voice = voiceRef.current ?? undefined;
+    entry.items = itemsRef.current.length ? structuredClone(itemsRef.current) : undefined;
     entry.joints = Object.keys(jointsRef.current).length ? structuredClone(jointsRef.current) : undefined;
     entry.thumb = makeThumbnail(cachesRef.current, mouthRef.current, entry.joints);
     const list = [entry, ...characters.filter((c) => c.id !== id)].slice(0, MAX_SAVED);
@@ -1297,6 +1458,30 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     );
   }
 
+  if (phase === "movie" && openMovie) {
+    return (
+      <MovieStudio
+        key={openMovie.id}
+        movie={openMovie}
+        characters={characters}
+        backgrounds={backgrounds}
+        bgImages={bgImages}
+        customMoves={customMoves}
+        gifs={gifs}
+        gifAnims={gifAnims}
+        onAddGif={addGif}
+        onRemoveGif={removeGif}
+        onSave={saveMovie}
+        onAddBackground={addBackground}
+        onRemoveBackground={removeBackground}
+        onExit={() => {
+          setOpenMovie(null);
+          setPhase("gallery");
+        }}
+      />
+    );
+  }
+
   if (phase === "gallery") {
     return (
       <div className="h-full flex flex-col gap-4 overflow-y-auto">
@@ -1396,6 +1581,47 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
             </div>
           )}
         </div>
+        {characters.length > 0 && (
+          <div className="shrink-0">
+            <h2 className="text-lg font-bold text-white/80 mb-1">🎞️ Mis películas</h2>
+            <p className="text-white/50 text-sm mb-3">Como un editor de video: franjas para cada personaje, efecto y música, y varios a la vez.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <button
+                onClick={newMovie}
+                className={`${btn} bg-gradient-to-r from-sky-400 to-indigo-500 text-white text-xl min-h-[120px]`}
+              >
+                ➕ Nueva película
+              </button>
+              {movies.map((mv) => (
+                <div key={mv.id} className="bg-white/5 border border-white/10 rounded-2xl p-3 flex flex-col gap-2">
+                  <div className="text-white font-bold truncate">🎞️ {mv.title || "Sin título"}</div>
+                  <div className="text-white/50 text-sm">
+                    {mv.length} s · {mv.tracks.length} {mv.tracks.length === 1 ? "pista" : "pistas"}
+                  </div>
+                  {deleteMovieAsk === mv.id ? (
+                    <div className="flex gap-2">
+                      <button onClick={() => deleteMovie(mv.id)} className={`${btn} flex-1 bg-red-500 text-white text-sm`}>Sí, borrar</button>
+                      <button onClick={() => setDeleteMovieAsk(null)} className={`${btn} flex-1 bg-white/10 text-white text-sm`}>No</button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setOpenMovie(mv);
+                          setPhase("movie");
+                        }}
+                        className={`${btn} flex-1 bg-indigo-500 text-white`}
+                      >
+                        ▶️ Abrir
+                      </button>
+                      <button onClick={() => setDeleteMovieAsk(mv.id)} className={`${btn} w-14 bg-white/10 text-white`}>🗑️</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {notice && <div className="shrink-0 bg-amber-400 text-slate-900 font-bold rounded-2xl p-3 text-center">{notice}</div>}
       </div>
     );
@@ -1421,9 +1647,10 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
                   setActivePart(id);
                   setEditingMouth(false);
                   setEditingJoints(false);
+                  setEditingItems(false);
                 }}
                 className={`${btn} px-3 text-left whitespace-nowrap border-2 ${
-                  id === activePart && !editingMouth && !editingJoints ? "bg-violet-500 border-violet-300 text-white" : "bg-white/5 border-white/10 text-white/80"
+                  id === activePart && !editingMouth && !editingJoints && !editingItems ? "bg-violet-500 border-violet-300 text-white" : "bg-white/5 border-white/10 text-white/80"
                 }`}
               >
                 <span className="text-2xl mr-1">{p.emoji}</span>
@@ -1444,6 +1671,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
           <button
             onClick={() => {
               setEditingMouth(false);
+              setEditingItems(false);
               setEditingJoints(true);
             }}
             className={`${btn} px-3 text-left whitespace-nowrap border-2 ${
@@ -1453,12 +1681,27 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
             <span className="text-2xl mr-1">🔴</span>
             8. Dónde se dobla {Object.keys(jointsRef.current).length > 0 && "✅"}
           </button>
+          <button
+            onClick={() => {
+              setEditingMouth(false);
+              setEditingJoints(false);
+              setEditingItems(true);
+            }}
+            className={`${btn} px-3 text-left whitespace-nowrap border-2 ${
+              editingItems ? "bg-violet-500 border-violet-300 text-white" : "bg-white/5 border-white/10 text-white/80"
+            }`}
+          >
+            <span className="text-2xl mr-1">🎒</span>
+            9. Accesorios {itemsRef.current.length > 0 && "✅"}
+          </button>
         </div>
 
         {/* Lienzo */}
         <div className="shrink-0 h-[65vh] md:h-auto md:shrink md:flex-1 md:min-h-0 min-w-0 flex flex-col items-center gap-2">
           <div className="text-white text-center font-bold">
-            {editingJoints ? (
+            {editingItems ? (
+              <>🎒 Toca un accesorio para ponérselo. Arrástralo con un dedo; con dos lo agrandas o lo giras.</>
+            ) : editingJoints ? (
               <>🔴 Arrastra cada punto a donde se dobla: hombros ✋, cuello 🙂, cadera 👕 y piernas 🦶.</>
             ) : editingMouth ? (
               <>👄 Arrastra la boca a su lugar en la cara. En el escenario grabas tu voz y la boca se mueve.</>
@@ -1492,6 +1735,70 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
         <div className="md:w-60 shrink-0 flex flex-col gap-3 md:min-h-0">
           <div className="flex flex-col gap-3 md:flex-1 md:min-h-0 md:overflow-y-auto md:pr-1">
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPhotoChosen} />
+          {editingItems && (
+            <div className="bg-cyan-400/10 border border-cyan-400/30 rounded-2xl p-2 flex flex-col gap-2">
+              <div className="grid grid-cols-4 gap-2">
+                {ITEMS.map((it) => (
+                  <button
+                    key={it.id}
+                    aria-label={it.label}
+                    title={it.label}
+                    onClick={() => addItem(it.id)}
+                    className={`${btn} text-2xl bg-white/10`}
+                  >
+                    {it.emoji}
+                  </button>
+                ))}
+              </div>
+              {(() => {
+                const sel = itemsRef.current.find((i) => i.id === selectedItem);
+                if (!sel) return <p className="text-xs text-cyan-100 text-center">Toca uno para ponérselo. Se mueve con la parte donde lo pegues.</p>;
+                const info = itemInfo(sel.kind);
+                return (
+                  <div className="bg-white/5 rounded-xl p-2 flex flex-col gap-2">
+                    <div className="text-white font-bold text-sm">{info?.emoji} {info?.label} · va en:</div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {DRAW_ORDER.map((pid) => (
+                        <button
+                          key={pid}
+                          onClick={() => adjustItem((it) => { it.part = pid; })}
+                          className={`min-h-[44px] rounded-xl text-sm font-bold active:scale-95 ${sel.part === pid ? "bg-cyan-400 text-slate-900" : "bg-white/10 text-white"}`}
+                        >
+                          {PART_BY_ID[pid].emoji}{pid.endsWith("L") ? "⬅️" : pid.endsWith("R") ? "➡️" : ""}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      <button aria-label="Más grande" onClick={() => adjustItem((it) => { it.size = Math.min(400, it.size * 1.12); })} className={`${btn} bg-white/10 text-white`}>➕</button>
+                      <button aria-label="Más chico" onClick={() => adjustItem((it) => { it.size = Math.max(25, it.size / 1.12); })} className={`${btn} bg-white/10 text-white`}>➖</button>
+                      <button aria-label="Girar" onClick={() => adjustItem((it) => { it.rot += Math.PI / 12; })} className={`${btn} bg-white/10 text-white`}>↻</button>
+                      <button aria-label="Voltear" onClick={() => adjustItem((it) => { it.flip = !it.flip; })} className={`${btn} bg-white/10 text-white`}>🪞</button>
+                      {info?.colors && (
+                        <button
+                          aria-label="Cambiar color"
+                          onClick={() => adjustItem((it) => { it.color = ITEM_COLORS[(ITEM_COLORS.indexOf(it.color ?? ITEM_COLORS[0]) + 1) % ITEM_COLORS.length]; })}
+                          className={`${btn} text-white`}
+                          style={{ background: sel.color }}
+                        >
+                          🎨
+                        </button>
+                      )}
+                      <button aria-label="Quitar accesorio" onClick={removeItem} className={`${btn} bg-white/10 text-white`}>🗑️</button>
+                    </div>
+                  </div>
+                );
+              })()}
+              <button
+                onClick={() => {
+                  setSelectedItem(null);
+                  setEditingItems(false);
+                }}
+                className={`${btn} bg-white/10 text-white text-sm`}
+              >
+                ✅ Listo con los accesorios
+              </button>
+            </div>
+          )}
           {editingJoints && (
             <div className="bg-violet-400/10 border border-violet-400/30 rounded-2xl p-2 flex flex-col gap-2">
               <p className="text-sm text-violet-100">
@@ -1545,7 +1852,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
               </button>
             </div>
           )}
-          {!editingMouth && !editingJoints && (<>
+          {!editingMouth && !editingJoints && !editingItems && (<>
           <button
             onClick={() => fileInputRef.current?.click()}
             className={`${btn} bg-gradient-to-r from-amber-400 to-orange-500 text-slate-900 text-lg`}
@@ -1631,7 +1938,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
           </div>
           </>)}
           </div>
-          {nextPart && !editingMouth && !editingJoints ? (
+          {nextPart && !editingMouth && !editingJoints && !editingItems ? (
             <button onClick={() => setActivePart(nextPart)} className={`${btn} bg-white/15 text-white text-lg`}>
               Siguiente: {PART_BY_ID[nextPart].emoji} {PART_BY_ID[nextPart].label} →
             </button>

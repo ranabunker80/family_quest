@@ -12,6 +12,8 @@ export const EFFECTS: { id: string; label: string; emoji: string; once?: number 
   { id: "hearts", label: "Corazones", emoji: "💖" },
   { id: "dizzy", label: "Mareado", emoji: "💫" },
   { id: "rain", label: "Lluvia", emoji: "🌧️" },
+  { id: "laserR", label: "Láser ➡️", emoji: "🔦→" },
+  { id: "laserL", label: "Láser ⬅️", emoji: "←🔦" },
 ];
 
 export const DEFAULT_EFFECT_SIZE = 200;
@@ -233,6 +235,35 @@ export function drawEffect(
         ctx.scale(1, 2.5);
         emoji(ctx, i % 2 ? "⭐" : "💫", 0, s * 0.15, s * 0.3);
         ctx.restore();
+      }
+      break;
+    }
+    case "laserR":
+    case "laserL": {
+      // disparos de juguete: bolitas de luz de colores que salen volando, "¡PIU!"
+      if (kind === "laserL") ctx.scale(-1, 1);
+      const colors = ["#22d3ee", "#a3e635", "#f472b6"];
+      for (let i = 0; i < 3; i++) {
+        const ph = (age * 1.4 + i / 3) % 1;
+        const x = -s + ph * size * 1.4;
+        ctx.globalAlpha = ph < 0.85 ? 1 : (1 - ph) / 0.15;
+        ctx.shadowColor = colors[i];
+        ctx.shadowBlur = 18;
+        ctx.fillStyle = colors[i];
+        ctx.beginPath();
+        ctx.roundRect(x - size * 0.16, -7, size * 0.32, 14, 7);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.roundRect(x - size * 0.12, -3, size * 0.24, 6, 3);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      if (age % 0.7 < 0.35) {
+        ctx.translate(-s * 0.8, -s * 0.45);
+        if (kind === "laserL") ctx.scale(-1, 1);
+        comicText(ctx, "¡PIU!", s * 0.28, "#a3e635");
       }
       break;
     }

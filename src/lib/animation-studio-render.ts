@@ -14,7 +14,9 @@ import {
   type Pose,
   type SceneId,
   type Joints,
+  type CharacterItem,
 } from "@/lib/animation-studio-data";
+import { drawItem } from "@/lib/animation-studio-items";
 
 export const RES = 2; // resolución interna del dibujo (nitidez en tablet)
 export const STAGE_W = 960;
@@ -240,7 +242,7 @@ export function newPartCanvas(): HTMLCanvasElement {
   return c;
 }
 
-export function renderPart(canvas: HTMLCanvasElement, strokes: Stroke[], image?: LoadedImage) {
+export function renderPart(canvas: HTMLCanvasElement, strokes: Stroke[], image?: LoadedImage, items?: CharacterItem[]) {
   const ctx = canvas.getContext("2d")!;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -255,15 +257,17 @@ export function renderPart(canvas: HTMLCanvasElement, strokes: Stroke[], image?:
     ctx.restore();
   }
   for (const s of strokes) strokeSegment(ctx, s, 0);
+  // accesorios encima de la parte: giran con ella
+  for (const it of items ?? []) drawItem(ctx, it);
 }
 
 export type Caches = Record<PartId, HTMLCanvasElement>;
 
-export function buildCaches(parts: CharacterParts, images: LoadedImages = {}): Caches {
+export function buildCaches(parts: CharacterParts, images: LoadedImages = {}, items: CharacterItem[] = []): Caches {
   const caches = {} as Caches;
   for (const p of PARTS) {
     caches[p.id] = newPartCanvas();
-    renderPart(caches[p.id], parts[p.id], images[p.id]);
+    renderPart(caches[p.id], parts[p.id], images[p.id], items.filter((it) => it.part === p.id));
   }
   return caches;
 }
@@ -780,7 +784,7 @@ export async function prepareCharacter(c: SavedCharacter): Promise<{ runtime: Ch
   );
   return {
     runtime: {
-      caches: buildCaches(c.parts, images),
+      caches: buildCaches(c.parts, images, c.items),
       mouth: c.mouth ? { ...c.mouth } : null,
       name: c.name,
       joints: c.joints,

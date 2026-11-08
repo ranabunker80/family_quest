@@ -84,6 +84,22 @@ export const VOICE_MAX_SECONDS = 15;
 // Puntos donde se dobla cada parte, puestos por el niño (si no, los de PARTS)
 export type Joints = Partial<Record<PartId, [number, number]>>;
 
+// Accesorio pegado a una parte (casco en la cabeza, láser en la mano…): se mueve con ella.
+// x, y = centro en coordenadas del personaje sin mover.
+export interface CharacterItem {
+  id: string;
+  kind: string;
+  part: PartId;
+  x: number;
+  y: number;
+  size: number;
+  rot: number;
+  flip: boolean;
+  color?: string;
+}
+
+export const MAX_ITEMS = 10;
+
 export interface SavedCharacter {
   id: string;
   name: string;
@@ -94,6 +110,7 @@ export interface SavedCharacter {
   mouth?: Mouth;
   voice?: Blob; // grabación de su voz (se queda en la tablet)
   joints?: Joints;
+  items?: CharacterItem[];
 }
 
 export function emptyParts(): CharacterParts {
@@ -381,3 +398,54 @@ export const MAX_CAST = 3;
 export const MAX_BACKGROUNDS = 12;
 export const MAX_STORIES = 12;
 export const SILENT_LINE_SECONDS = 2.5;
+
+// ---------- Película con línea de tiempo ----------
+// Cada personaje, efecto o música es una pista con franjas (desde → hasta, en segundos).
+// Un personaje solo se ve mientras tiene una franja; varias pistas pueden encimarse.
+export interface CharClip {
+  id: string;
+  start: number;
+  end: number;
+  move: string;
+  speed: number;
+  x: number; // centro en el escenario
+  flip: boolean;
+  voice?: Blob;
+  rate: number;
+}
+
+export interface FxClip {
+  id: string;
+  start: number;
+  end: number;
+  kind: string;
+  x: number;
+  y: number;
+  size: number;
+}
+
+export interface MusicClip {
+  id: string;
+  start: number;
+  end: number;
+  music: string;
+}
+
+export type MovieTrack =
+  | { id: string; type: "char"; charId: string; clips: CharClip[] }
+  | { id: string; type: "fx"; clips: FxClip[] }
+  | { id: string; type: "music"; clips: MusicClip[] };
+
+export interface Movie {
+  id: string;
+  title: string;
+  scene: string;
+  length: number; // segundos
+  tracks: MovieTrack[];
+  updatedAt: number;
+}
+
+export const MAX_MOVIES = 12;
+export const MAX_TRACKS = 8;
+export const MOVIE_LENGTHS = [10, 20, 30, 45, 60];
+export const MIN_CLIP_SECONDS = 0.3;
