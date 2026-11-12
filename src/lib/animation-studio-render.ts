@@ -58,7 +58,14 @@ export async function idbGet<T>(key: string, fallback: T): Promise<T> {
   }
 }
 
+// Quien quiera enterarse de cada guardado (el respaldo en la nube)
+let putListener: ((key: string, value: unknown) => void) | null = null;
+export function onIdbPut(fn: ((key: string, value: unknown) => void) | null) {
+  putListener = fn;
+}
+
 export async function idbPut(key: string, value: unknown): Promise<boolean> {
+  putListener?.(key, value);
   try {
     const db = await openDb();
     return await new Promise((resolve) => {

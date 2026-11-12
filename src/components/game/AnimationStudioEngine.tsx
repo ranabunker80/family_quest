@@ -81,9 +81,11 @@ import {
   pivotOf,
   puppetTips,
   renderPart,
+  onIdbPut,
   storeCharacters,
   strokeSegment,
 } from "@/lib/animation-studio-render";
+import { askPersistentStorage, loadCloudList, mergeById, scheduleCloudBackup } from "@/lib/animation-studio-cloud";
 
 type Phase = "gallery" | "draw" | "stage" | "story" | "movie" | "frames";
 
@@ -283,19 +285,68 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   mirrorRef.current = mirror;
   nameRef.current = name;
 
+  // Lo guardado en la tablet aparece al instante; luego se junta con el respaldo en la nube.
+  const loadedRef = useRef(false);
   useEffect(() => {
     let alive = true;
-    loadCharacters(storageKey).then((list) => alive && setCharacters(list));
-    idbGet<CustomBackground[]>(`${storageKey}:backgrounds`, []).then((list) => alive && setBackgrounds(list));
-    idbGet<Story[]>(`${storageKey}:stories`, []).then((list) => alive && setStories(list));
-    idbGet<Movie[]>(`${storageKey}:movies`, []).then((list) => alive && setMovies(list));
-    idbGet<FrameAnim[]>(`${storageKey}:frames`, []).then((list) => alive && setFrameAnims(list));
-    idbGet<CustomMove[]>(`${storageKey}:moves`, []).then((list) => alive && setCustomMoves(list));
+    loadedRef.current = false;
+    if (!previewMode) {
+      askPersistentStorage();
+      onIdbPut(scheduleCloudBackup);
+    }
+    const sync = <T extends { id: string; updatedAt?: number }>(
+      key: string,
+      set: React.Dispatch<React.SetStateAction<T[]>>,
+      onRestored?: (n: number) => void,
+    ) =>
+      idbGet<T[]>(key, []).then(async (local) => {
+        if (!alive) return;
+        set(local);
+        const cloud = previewMode ? null : await loadCloudList<T>(key);
+        if (!alive) return;
+        if (!cloud) {
+          if (local.length && !previewMode) scheduleCloudBackup(key, local);
+          return;
+        }
+        set((cur) => {
+          const merged = mergeById(cur, cloud);
+          const added = merged.length - cur.length;
+          if (added > 0 || merged.some((x, i) => x !== cur[i])) idbPut(key, merged);
+          else scheduleCloudBackup(key, merged);
+          if (added > 0) onRestored?.(added);
+          return merged;
+        });
+      });
+    sync<SavedCharacter>(storageKey, setCharacters, (n) =>
+      setNotice(`☁️ Recuperé ${n === 1 ? "1 personaje" : `${n} personajes`} de tu respaldo.`),
+    ).finally(() => {
+      loadedRef.current = true;
+    });
+    sync<CustomBackground>(`${storageKey}:backgrounds`, setBackgrounds);
+    sync<Story>(`${storageKey}:stories`, setStories);
+    sync<Movie>(`${storageKey}:movies`, setMovies);
+    sync<FrameAnim>(`${storageKey}:frames`, setFrameAnims);
+    sync<CustomMove>(`${storageKey}:moves`, setCustomMoves);
     idbGet<CustomGif[]>(`${storageKey}:gifs`, []).then((list) => alive && setGifs(list));
     return () => {
       alive = false;
+      onIdbPut(null);
     };
-  }, [storageKey]);
+  }, [storageKey, previewMode]);
+
+  // Guardar personajes sin pisar los que todavía no terminan de cargar
+  const persistCharacters = (list: SavedCharacter[]) => {
+    const write = (l: SavedCharacter[]) =>
+      storeCharacters(storageKey, l).then((ok) => {
+        if (!ok) setNotice("No se pudo guardar en esta tablet, pero puedes seguir jugando.");
+      });
+    if (loadedRef.current) return write(list);
+    return loadCharacters(storageKey).then((saved) => {
+      const merged = mergeById(list, saved).slice(0, MAX_SAVED);
+      setCharacters(merged);
+      return write(merged);
+    });
+  };
 
   // Fondos propios: cargar las imágenes que falten
   useEffect(() => {
@@ -1066,9 +1117,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     const list = [entry, ...characters.filter((c) => c.id !== id)].slice(0, MAX_SAVED);
     setCharacters(list);
     setEditingId(id);
-    storeCharacters(storageKey, list).then((ok) => {
-      if (!ok) setNotice("No se pudo guardar en esta tablet, pero puedes seguir jugando.");
-    });
+    persistCharacters(list);
     return true;
   };
 
@@ -1083,7 +1132,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
 
   const deleteCharacter = (id: string) => {
     const list = characters.filter((c) => c.id !== id);
-    storeCharacters(storageKey, list);
+    persistCharacters(list);
     setCharacters(list);
     setDeleteAsk(null);
   };
