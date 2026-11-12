@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import StoryStudio, { SceneButtons, EffectButtons } from "@/components/game/StoryStudio";
 import MoveRecorder from "@/components/game/MoveRecorder";
 import MovieStudio from "@/components/game/MovieStudio";
+import FrameStudio from "@/components/game/FrameStudio";
 import { MUSIC, MUSIC_VOLUMES, MusicPlayer } from "@/lib/animation-studio-music";
 import { ITEMS, ITEM_COLORS, itemHit, itemInfo, placeItem } from "@/lib/animation-studio-items";
 import { DEFAULT_EFFECT_SIZE, decodeGif, drawEffect, effectDone, effectInfo, type GifAnim } from "@/lib/animation-studio-effects";
@@ -45,6 +46,8 @@ import {
   type Story,
   type Movie,
   MAX_MOVIES,
+  MAX_FRAME_ANIMS,
+  type FrameAnim,
   MAX_BACKGROUNDS,
   MAX_STORIES,
 } from "@/lib/animation-studio-data";
@@ -82,7 +85,7 @@ import {
   strokeSegment,
 } from "@/lib/animation-studio-render";
 
-type Phase = "gallery" | "draw" | "stage" | "story" | "movie";
+type Phase = "gallery" | "draw" | "stage" | "story" | "movie" | "frames";
 
 interface Props {
   storageKey: string;
@@ -180,6 +183,9 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
   const [movies, setMovies] = useState<Movie[]>([]);
   const [openMovie, setOpenMovie] = useState<Movie | null>(null);
   const [deleteMovieAsk, setDeleteMovieAsk] = useState<string | null>(null);
+  const [frameAnims, setFrameAnims] = useState<FrameAnim[]>([]);
+  const [openFrames, setOpenFrames] = useState<{ anim: FrameAnim; fresh: boolean } | null>(null);
+  const [deleteFramesAsk, setDeleteFramesAsk] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [activePart, setActivePart] = useState<PartId>("head");
@@ -283,6 +289,7 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     idbGet<CustomBackground[]>(`${storageKey}:backgrounds`, []).then((list) => alive && setBackgrounds(list));
     idbGet<Story[]>(`${storageKey}:stories`, []).then((list) => alive && setStories(list));
     idbGet<Movie[]>(`${storageKey}:movies`, []).then((list) => alive && setMovies(list));
+    idbGet<FrameAnim[]>(`${storageKey}:frames`, []).then((list) => alive && setFrameAnims(list));
     idbGet<CustomMove[]>(`${storageKey}:moves`, []).then((list) => alive && setCustomMoves(list));
     idbGet<CustomGif[]>(`${storageKey}:gifs`, []).then((list) => alive && setGifs(list));
     return () => {
@@ -470,6 +477,31 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
       return list;
     });
     setDeleteMovieAsk(null);
+  };
+
+  // ---------- Animaciones por fotogramas (varios personajes) ----------
+  const saveFrameAnim = (anim: FrameAnim) => {
+    setFrameAnims((prev) => {
+      const list = [anim, ...prev.filter((a) => a.id !== anim.id)].slice(0, MAX_FRAME_ANIMS);
+      idbPut(`${storageKey}:frames`, list);
+      return list;
+    });
+  };
+
+  const newFrameAnim = () => {
+    const anim: FrameAnim = { id: `${Date.now()}`, title: "", scene: "park", cast: [], frames: [{ id: `${Date.now()}`, secs: 0.5, poses: [] }], updatedAt: Date.now() };
+    saveFrameAnim(anim);
+    setOpenFrames({ anim, fresh: true });
+    setPhase("frames");
+  };
+
+  const deleteFrameAnim = (id: string) => {
+    setFrameAnims((prev) => {
+      const list = prev.filter((a) => a.id !== id);
+      idbPut(`${storageKey}:frames`, list);
+      return list;
+    });
+    setDeleteFramesAsk(null);
   };
 
   const rerender = useCallback((part: PartId) => {
@@ -1482,6 +1514,26 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
     );
   }
 
+  if (phase === "frames" && openFrames) {
+    return (
+      <FrameStudio
+        key={openFrames.anim.id}
+        anim={openFrames.anim}
+        startPicking={openFrames.fresh}
+        characters={characters}
+        backgrounds={backgrounds}
+        bgImages={bgImages}
+        onSave={saveFrameAnim}
+        onAddBackground={addBackground}
+        onRemoveBackground={removeBackground}
+        onExit={() => {
+          setOpenFrames(null);
+          setPhase("gallery");
+        }}
+      />
+    );
+  }
+
   if (phase === "gallery") {
     return (
       <div className="h-full flex flex-col gap-4 overflow-y-auto">
@@ -1495,9 +1547,32 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
             <p className="text-amber-300 text-sm mt-2">👀 Modo papás: lo que dibujes aquí se guarda solo en este aparato.</p>
           )}
         </div>
-        <button onClick={startNew} className={`${btn} shrink-0 bg-gradient-to-r from-fuchsia-500 to-violet-500 text-white text-2xl py-5 shadow-lg`}>
-          ✏️ Crear personaje nuevo
-        </button>
+        <div className="shrink-0">
+          <h2 className="text-lg font-bold text-white/80 mb-3">¿Qué quieres hacer?</h2>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <button onClick={startNew} className={`${btn} bg-gradient-to-r from-fuchsia-500 to-violet-500 text-white p-4 flex flex-col items-center justify-center gap-1 min-h-[130px] shadow-lg`}>
+              <span className="text-4xl">✏️</span>
+              <span className="text-lg leading-tight">Crear personaje</span>
+              <span className="text-xs font-normal text-white/80 leading-tight">Dibújalo o ponle fotos</span>
+            </button>
+            {([
+              { onClick: newFrameAnim, emoji: "📸", title: "Animación por fotogramas", desc: "Varios personajes: los acomodas, foto, los mueves, foto…", cls: "from-amber-400 to-orange-500 text-slate-900" },
+              { onClick: newMovie, emoji: "🎞️", title: "Película", desc: "Franjas de tiempo: cada personaje con sus movimientos", cls: "from-sky-400 to-indigo-500 text-white" },
+              { onClick: newStory, emoji: "📚", title: "Historia con voces", desc: "Por turnos, cada uno dice lo suyo", cls: "from-emerald-400 to-teal-500 text-slate-900" },
+            ] as const).map((o) => (
+              <button
+                key={o.title}
+                disabled={characters.length === 0}
+                onClick={o.onClick}
+                className={`${btn} bg-gradient-to-r ${o.cls} p-4 flex flex-col items-center justify-center gap-1 min-h-[130px] shadow-lg disabled:opacity-40`}
+              >
+                <span className="text-4xl">{o.emoji}</span>
+                <span className="text-lg leading-tight">{o.title}</span>
+                <span className="text-xs font-normal opacity-80 leading-tight">{characters.length === 0 ? "Primero crea un personaje" : o.desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
         {characters.length > 0 && (
           <div className="shrink-0">
             <h2 className="text-lg font-bold text-white/80 mb-3">Mis personajes</h2>
@@ -1581,6 +1656,49 @@ export default function AnimationStudioEngine({ storageKey, previewMode = false 
             </div>
           )}
         </div>
+        {frameAnims.length > 0 && (
+          <div className="shrink-0">
+            <h2 className="text-lg font-bold text-white/80 mb-3">📸 Mis animaciones por fotogramas</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {frameAnims.map((fa) => (
+                <div key={fa.id} className="bg-white/5 border border-white/10 rounded-2xl p-3 flex flex-col gap-2">
+                  <div className="text-white font-bold truncate">📸 {fa.title || "Sin título"}</div>
+                  <div className="flex gap-1 h-14 items-end">
+                    {fa.cast.map((id, i) => {
+                      const c = characters.find((ch) => ch.id === id);
+                      return c?.thumb ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img key={`${id}-${i}`} src={c.thumb} alt="" className="h-14 w-11 object-contain rounded-lg bg-[#fffdf7]" />
+                      ) : null;
+                    })}
+                    <span className="text-white/50 text-sm ml-auto">
+                      {fa.frames.length} {fa.frames.length === 1 ? "fotograma" : "fotogramas"}
+                    </span>
+                  </div>
+                  {deleteFramesAsk === fa.id ? (
+                    <div className="flex gap-2">
+                      <button onClick={() => deleteFrameAnim(fa.id)} className={`${btn} flex-1 bg-red-500 text-white text-sm`}>Sí, borrar</button>
+                      <button onClick={() => setDeleteFramesAsk(null)} className={`${btn} flex-1 bg-white/10 text-white text-sm`}>No</button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setOpenFrames({ anim: fa, fresh: false });
+                          setPhase("frames");
+                        }}
+                        className={`${btn} flex-1 bg-amber-500 text-slate-900`}
+                      >
+                        ▶️ Abrir
+                      </button>
+                      <button onClick={() => setDeleteFramesAsk(fa.id)} className={`${btn} w-14 bg-white/10 text-white`}>🗑️</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {characters.length > 0 && (
           <div className="shrink-0">
             <h2 className="text-lg font-bold text-white/80 mb-1">🎞️ Mis películas</h2>

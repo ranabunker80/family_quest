@@ -408,7 +408,8 @@ export interface CharClip {
   end: number;
   move: string;
   speed: number;
-  x: number; // centro en el escenario
+  x: number; // centro en el escenario (al empezar la franja)
+  x2?: number; // si existe, camina de x a x2 durante la franja
   flip: boolean;
   voice?: Blob;
   rate: number;
@@ -449,3 +450,39 @@ export const MAX_MOVIES = 12;
 export const MAX_TRACKS = 8;
 export const MOVIE_LENGTHS = [10, 20, 30, 45, 60];
 export const MIN_CLIP_SECONDS = 0.3;
+
+// Dónde va el personaje en el segundo t de su franja (camina si tiene x2)
+export function clipX(c: CharClip, t: number): number {
+  if (c.x2 === undefined || c.end <= c.start) return c.x;
+  const k = Math.max(0, Math.min(1, (t - c.start) / (c.end - c.start)));
+  return c.x + (c.x2 - c.x) * k;
+}
+
+// ---------- Animación por fotogramas (varios personajes) ----------
+// Cada fotograma guarda la pose de todos los personajes; al reproducir se pasa suave de uno al otro.
+// Pose de un personaje: [x, y, body, head, armL, armR, legL, legR, flip(0|1)]; null = no sale en ese fotograma.
+export interface FrameShot {
+  id: string;
+  secs: number; // lo que tarda en llegar a este fotograma desde el anterior
+  poses: (number[] | null)[]; // una por personaje, en el orden de cast
+}
+
+export interface FrameAnim {
+  id: string;
+  title: string;
+  scene: string;
+  music?: string;
+  cast: string[]; // ids de personajes
+  frames: FrameShot[];
+  updatedAt: number;
+}
+
+export const MAX_FRAME_ANIMS = 12;
+export const MAX_FRAMES = 120;
+export const MAX_FRAME_CAST = 4;
+export const FRAME_SECS = [
+  { secs: 0.25, emoji: "🚀", label: "Muy rápido" },
+  { secs: 0.5, emoji: "⚡", label: "Rápido" },
+  { secs: 1, emoji: "🚶", label: "Normal" },
+  { secs: 2, emoji: "🐢", label: "Lento" },
+] as const;

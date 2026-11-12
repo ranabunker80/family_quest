@@ -10,6 +10,7 @@ import {
   MAX_TRACKS,
   MOVIE_LENGTHS,
   MIN_CLIP_SECONDS,
+  clipX,
   customMoveId,
   moveInfo,
   movePose,
@@ -121,6 +122,10 @@ export default function MovieStudio({
   const [notice, setNotice] = useState<string | null>(null);
   const [musicVol, setMusicVol] = useState<number>(MUSIC_VOLUMES[1].level);
   const [, setReady] = useState(0);
+  // Al arrastrar en el escenario: dónde empieza o dónde termina de caminar
+  const [walkEnd, setWalkEnd] = useState<"start" | "end">("start");
+  const walkEndRef = useRef(walkEnd);
+  walkEndRef.current = walkEnd;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const movieRef = useRef(movie);
@@ -448,6 +453,33 @@ export default function MovieStudio({
           ghost = true;
         }
         if (!clip) continue;
+        const isSel = !isPlaying && s?.clip === clip.id;
+        // el elegido se ve donde lo están acomodando (inicio o final del camino)
+        const cx = isSel && clip.x2 !== undefined ? (walkEndRef.current === "end" ? clip.x2 : clip.x) : ghost ? clip.x : clipX(clip, T);
+        if (isSel && clip.x2 !== undefined) {
+          const other = walkEndRef.current === "end" ? clip.x : clip.x2;
+          ctx.save();
+          ctx.globalAlpha = 0.25;
+          drawCharacter(ctx, rt.caches, { ...REST_POSE, scaleX: clip.flip ? -1 : 1 }, other, HIP_Y, SCALE, rt.mouth, 0, rt.joints);
+          ctx.restore();
+          ctx.save();
+          ctx.setLineDash([14, 10]);
+          ctx.lineWidth = 6;
+          ctx.strokeStyle = "rgba(255,255,255,0.8)";
+          ctx.beginPath();
+          ctx.moveTo(clip.x, GROUND_Y - 6);
+          ctx.lineTo(clip.x2, GROUND_Y - 6);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          const dir = Math.sign(clip.x2 - clip.x) || 1;
+          ctx.fillStyle = "rgba(255,255,255,0.9)";
+          ctx.beginPath();
+          ctx.moveTo(clip.x2 + dir * 18, GROUND_Y - 6);
+          ctx.lineTo(clip.x2 - dir * 6, GROUND_Y - 22);
+          ctx.lineTo(clip.x2 - dir * 6, GROUND_Y + 10);
+          ctx.fill();
+          ctx.restore();
+        }
         const pose = ghost ? { ...REST_POSE } : movePose(clip.move, (T - clip.start) * clip.speed, customMovesRef.current);
         pose.x *= K;
         pose.y *= K;
@@ -463,17 +495,17 @@ export default function MovieStudio({
         ctx.globalAlpha = ghost ? 0.35 : 1;
         ctx.fillStyle = "rgba(0,0,0,0.18)";
         ctx.beginPath();
-        ctx.ellipse(clip.x + pose.x, GROUND_Y + 4, 70 * K * Math.max(0.4, 1 + pose.y / 300), 12 * K, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx + pose.x, GROUND_Y + 4, 70 * K * Math.max(0.4, 1 + pose.y / 300), 12 * K, 0, 0, Math.PI * 2);
         ctx.fill();
-        drawCharacter(ctx, rt.caches, pose, clip.x, HIP_Y, SCALE, rt.mouth, open, rt.joints);
+        drawCharacter(ctx, rt.caches, pose, cx, HIP_Y, SCALE, rt.mouth, open, rt.joints);
         ctx.globalAlpha = 1;
-        if (!isPlaying && s?.clip === clip.id) {
+        if (isSel) {
           ctx.save();
           ctx.setLineDash([10, 8]);
           ctx.lineWidth = 4;
           ctx.strokeStyle = "#c4b5fd";
           ctx.beginPath();
-          ctx.ellipse(clip.x, GROUND_Y + 4, 85, 18, 0, 0, Math.PI * 2);
+          ctx.ellipse(cx, GROUND_Y + 4, 85, 18, 0, 0, Math.PI * 2);
           ctx.stroke();
           ctx.restore();
         }
@@ -526,7 +558,8 @@ export default function MovieStudio({
     const c = selected.clip as CharClip & FxClip;
     if (kind === "down") {
       e.currentTarget.setPointerCapture(e.pointerId);
-      stageDragRef.current = { id: e.pointerId, x0: x, y0: y, cx: c.x, cy: c.y ?? 0 };
+      const endX = selected.track.type === "char" && c.x2 !== undefined && walkEndRef.current === "end";
+      stageDragRef.current = { id: e.pointerId, x0: x, y0: y, cx: endX ? c.x2! : c.x, cy: c.y ?? 0 };
       return;
     }
     const d = stageDragRef.current;
@@ -538,7 +571,8 @@ export default function MovieStudio({
     }
     const nx = Math.round(Math.max(40, Math.min(STAGE_W - 40, d.cx + x - d.x0)));
     const ny = Math.round(Math.max(20, Math.min(STAGE_H - 20, d.cy + y - d.y0)));
-    mapClip(selected.track.id, c.id, (cl) => (selected.track.type === "fx" ? { ...cl, x: nx, y: ny } : { ...cl, x: nx }), false);
+    const endX = selected.track.type === "char" && c.x2 !== undefined && walkEndRef.current === "end";
+    mapClip(selected.track.id, c.id, (cl) => (selected.track.type === "fx" ? { ...cl, x: nx, y: ny } : endX ? { ...cl, x2: nx } : { ...cl, x: nx }), false);
   };
 
   // ---------- Pistas y franjas ----------
@@ -551,7 +585,7 @@ export default function MovieStudio({
     const last = (track.clips as AnyClip[])[track.clips.length - 1];
     if (track.type === "char") {
       const l = last as CharClip | undefined;
-      return { id, start, end, move: l?.move ?? "idle", speed: l?.speed ?? 1, x: l?.x ?? STAGE_W / 2, flip: l?.flip ?? false, rate: 1 };
+      return { id, start, end, move: l?.move ?? "idle", speed: l?.speed ?? 1, x: l?.x2 ?? l?.x ?? STAGE_W / 2, flip: l?.flip ?? false, rate: 1 };
     }
     if (track.type === "fx") {
       const l = last as FxClip | undefined;
@@ -742,7 +776,50 @@ export default function MovieStudio({
                 <div className="text-violet-100 font-bold text-sm">
                   🎭 {charById(selected.track.charId)?.name || "Personaje"} · {c.start.toFixed(1)}–{c.end.toFixed(1)} s
                 </div>
-                <p className="text-[11px] text-violet-100/80">Arrastra al personaje en el escenario para cambiarlo de lugar.</p>
+                <p className="text-[11px] text-violet-100/80">
+                  {c.x2 === undefined
+                    ? "Arrastra al personaje en el escenario para cambiarlo de lugar."
+                    : walkEnd === "start"
+                      ? "Arrastra al personaje a donde EMPIEZA a caminar."
+                      : "Arrastra al personaje a donde LLEGA al final de la franja."}
+                </p>
+                {c.x2 === undefined ? (
+                  <button
+                    onClick={() => {
+                      setWalkEnd("end");
+                      mapClip(selected.track.id, c.id, (cl) => {
+                        const x = (cl as CharClip).x;
+                        return { ...cl, x2: x < STAGE_W / 2 ? Math.min(STAGE_W - 80, x + 320) : Math.max(80, x - 320) };
+                      });
+                    }}
+                    className={`${btn} bg-emerald-500/80 text-white`}
+                  >
+                    🚶‍➡️ Que camine a otro lugar
+                  </button>
+                ) : (
+                  <div className="grid grid-cols-[1fr_1fr_auto] gap-1.5">
+                    <button
+                      onClick={() => setWalkEnd("start")}
+                      className={`min-h-[48px] rounded-xl text-sm font-bold active:scale-95 ${walkEnd === "start" ? "bg-emerald-400 text-slate-900" : "bg-white/10 text-white"}`}
+                    >
+                      🟢 Empieza
+                    </button>
+                    <button
+                      onClick={() => setWalkEnd("end")}
+                      className={`min-h-[48px] rounded-xl text-sm font-bold active:scale-95 ${walkEnd === "end" ? "bg-emerald-400 text-slate-900" : "bg-white/10 text-white"}`}
+                    >
+                      🏁 Llega
+                    </button>
+                    <button
+                      onClick={() => mapClip(selected.track.id, c.id, (cl) => ({ ...cl, x2: undefined }))}
+                      className="min-h-[48px] w-12 rounded-xl bg-white/10 text-white active:scale-95"
+                      aria-label="Que no camine"
+                      title="Que se quede en su lugar"
+                    >
+                      🧍
+                    </button>
+                  </div>
+                )}
                 <div className="grid grid-cols-4 gap-1.5">
                   {moveIds.map((id) => {
                     const mi = moveInfo(id, customMoves);
